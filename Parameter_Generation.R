@@ -1,0 +1,532 @@
+# remotes::update_packages('rblimp')
+
+library(Matrix)
+library(mvtnorm)
+library(rblimp)
+
+################################################################################
+# Simulation Conditions
+################################################################################
+
+corr_Xs <- .20
+rsq_baseline <- .13
+rsq_prod <- c(0,0.03,0.07)
+group_probs3 <- rbind(c(.34, .33, .33),
+                      c(.40, .40, .20),
+                      c(.60, .20, .20))
+group_probs2 <- rbind(c(.50,.50),
+                      c(.60,.40),
+                      c(.80,.20))
+# sample_size <- c(seq(100,400, by = 50),500,1000)
+loading_size <- c(.5,.8)
+num_loadings <- c(6,12)
+
+
+################################################################################
+# Step 1: Define Group-Specific Means of X to Induce Correlation
+################################################################################
+
+solve_factor_means <- function(probs, target_corr = corr_Xs, binary = F) {
+  
+  if(binary == T){
+    p1 <- probs[1] 
+    p2 <- probs[2]
+    
+    stopifnot(abs(p1 + p2 - 1) < 1e-6)
+    
+    # Define objective function to minimize the deviation from target correlation
+    objective <- function(mu2) {
+      mu1 <- 0  # fix group 1 mean to zero
+      mu_bar <- p1 * mu1 + p2 * mu2  # expected value of X (should be 0)
+      
+      # Between-group variance
+      var_between <- p1 * (mu1 - mu_bar)^2 + p2 * (mu2 - mu_bar)^2
+      var_within <- 1 - var_between  # to keep total variance of X at 1
+      var_X <- var_between + var_within  # should be ~1
+      
+      # Covariance between X and G2 dummy code
+      cov_X_G2 <- p2 * (mu2 - mu_bar)
+      
+      # Variance of G2 dummy variable
+      var_G2 <- p2 * (1 - p2)
+      
+      # Compute actual correlation
+      corr_G2 <- cov_X_G2 / sqrt(var_X * var_G2)
+      
+      # Return squared error from target
+      return((corr_G2 - target_corr)^2)
+    }
+    
+    # Optimize over a reasonable range
+    opt <- optimize(objective, interval = c(-3, 3))
+    
+    mu1 <- 0
+    mu2 <- opt$minimum
+    
+    return(c(mu1 = mu1, mu2 = mu2))
+    
+  } else{
+    p1 <- probs[1]
+    p2 <- probs[2]
+    p3 <- probs[3]
+    
+    stopifnot(abs(p1 + p2 + p3 - 1) < 1e-6)
+    
+    # Define objective function for optimizer
+    objective <- function(mu2) {
+      mu1 <- 0
+      mu3 <- -(p1 * mu1 + p2 * mu2) / p3  # ensures E[X] = 0
+      mu_bar <- 0 
+      
+      # Between-group variance
+      var_between <- p1 * (mu1 - mu_bar)^2 + p2 * (mu2 - mu_bar)^2 + p3 * (mu3 - mu_bar)^2
+      var_within <- 1 - var_between
+      var_X <- var_between + var_within  # should = 1
+      
+      # Covariances
+      cov_X_G2 <- p2 * (mu2 - mu_bar)
+      cov_X_G3 <- p3 * (mu3 - mu_bar)
+      
+      # Variances of dummy codes
+      var_G2 <- p2 * (1 - p2)
+      var_G3 <- p3 * (1 - p3)
+      
+      # Correlations
+      corr_G2 <- cov_X_G2 / sqrt(var_X * var_G2)
+      corr_G3 <- cov_X_G3 / sqrt(var_X * var_G3)
+      
+      # Minimize squared deviation from +target and -target
+      return((corr_G2 - target_corr)^2 + (corr_G3 + target_corr)^2)
+    }
+    
+    # Optimize over a wider interval to avoid getting stuck at zero
+    opt <- optimize(objective, interval = c(-3, 3))
+    
+    mu1 <- 0
+    mu2 <- opt$minimum
+    mu3 <- -(p1 * mu1 + p2 * mu2) / p3
+    
+    return(c(mu1 = mu1, mu2 = mu2, mu3 = mu3))
+  }
+  
+}
+
+
+################################################################################
+# Step 2: Solve for Within-Group Variance of X to Achieve Var(X) = 1
+################################################################################
+
+solve_factor_variance <- function(mu_X, probs, target_var = 1, binary = F) {
+  
+  if(binary == T){
+    stopifnot(length(mu_X) == 2, length(probs) == 2, abs(sum(probs) - 1) < 1e-6)
+    
+    # Pooled (overall) mean of X
+    mu_bar <- sum(probs * mu_X)
+    
+    # Between-group variance component
+    var_between <- sum(probs * (mu_X - mu_bar)^2)
+    
+    # Solve for within-group variance to achieve total variance = target_var
+    var_within <- target_var - var_between
+    
+    # All group variances assumed equal
+    var_group <- rep(var_within, 2)
+    names(var_group) <- paste0("sigma_sq_g", 1:2)
+    
+    return(list(
+      mu_bar = mu_bar,
+      var_between = var_between,
+      var_within = var_within,
+      group_variances = var_group
+    ))
+    
+  } else{
+    
+    stopifnot(length(mu_X) == 3, length(probs) == 3, abs(sum(probs) - 1) < 1e-6)
+    
+    # Pooled mean of X
+    mu_bar <- sum(probs * mu_X)
+    
+    # Between-group variance component
+    var_between <- sum(probs * (mu_X - mu_bar)^2)
+    
+    # Solve for within-group variance to ensure total variance = target_var
+    var_within <- target_var - var_between
+    
+    # All group variances set equal to this value
+    var_group <- rep(var_within, 3)
+    names(var_group) <- paste0("sigma_sq_g", 1:3)
+    
+    return(list(
+      mu_bar = mu_bar,
+      var_between = var_between,
+      var_within = var_within,
+      group_variances = var_group
+    ))
+  }
+  
+}
+
+
+################################################################################
+# Step 3: Solve for Group-Specific Slopes and Intercepts (Structural Parameters)
+################################################################################
+
+solve_group_parameters <- function(mu_X, var_X, probs, rsq_baseline, rsq_product,
+                                   binary = F) {
+  
+  if(binary == T){
+    
+    stopifnot(length(mu_X) == 2, length(var_X) == 2, length(probs) == 2, abs(sum(probs) - 1) < 1e-6)
+    
+    mu_X <- as.numeric(mu_X)
+    var_X <- as.numeric(var_X)
+    probs <- as.numeric(probs)
+    
+    # 1. Fix baseline slope (assumes full sample Var(X) = 1)
+    beta_baseline <- sqrt(rsq_baseline)
+    
+    # 2. Optimize delta2 (only one delta needed in two-group case)
+    objective <- function(delta2) {
+      deltas <- c(0, delta2)  # Group 1 is reference
+      betas <- beta_baseline + deltas
+      
+      # Compute group-level explained variance
+      y_means <- betas * mu_X
+      mean_y <- sum(probs * y_means)
+      
+      explained_var <- sum(probs * (betas^2 * var_X + (y_means - mean_y)^2))
+      achieved_rsq <- explained_var
+      
+      return((achieved_rsq - (rsq_baseline + rsq_product))^2)
+    }
+    
+    delta2_opt <- optimize(objective, interval = c(0, 5))$minimum
+    deltas <- c(0, delta2_opt)
+    betas <- beta_baseline + deltas
+    
+    # 3. Shared intercept to ensure E[Y] = 0
+    alpha_shared <- -sum(probs * betas * mu_X)
+    alphas <- rep(alpha_shared, 2)
+    
+    # 4. Residual variance to ensure Var(Y) = 1
+    y_means <- betas * mu_X + alphas
+    var_Y <- sum(probs * (betas^2 * var_X + (y_means - sum(probs * y_means))^2))
+    residual_var <- 1 - var_Y
+    sigmas_sq <- rep(residual_var, 2)
+    
+    names(betas) <- names(alphas) <- names(sigmas_sq) <- paste0("G", 1:2)
+    
+    return(list(
+      intercepts = alphas,
+      slopes = betas,
+      residual_variances = sigmas_sq
+    ))
+    
+  } else{
+    
+    stopifnot(length(mu_X) == 3, length(var_X) == 3, length(probs) == 3, abs(sum(probs) - 1) < 1e-6)
+    
+    mu_X <- as.numeric(mu_X)
+    var_X <- as.numeric(var_X)
+    probs <- as.numeric(probs)
+    
+    # 1. Fix baseline slope (assumes full sample Var(X) = 1)
+    beta_baseline <- sqrt(rsq_baseline)
+    
+    # 2. Optimize delta2 under constraint delta3 = 2 * delta2
+    objective <- function(delta2) {
+      delta3 <- 2 * delta2
+      deltas <- c(0, delta2, delta3)
+      betas <- beta_baseline + deltas
+      
+      # Compute group-level explained variance
+      y_means <- betas * mu_X
+      mean_y <- sum(probs * y_means)
+      
+      explained_var <- sum(probs * (betas^2 * var_X + (y_means - mean_y)^2))
+      achieved_rsq <- explained_var
+      
+      return((achieved_rsq - (rsq_baseline + rsq_product))^2)
+    }
+    
+    delta2_opt <- optimize(objective, interval = c(0, 5))$minimum
+    delta3_opt <- 2 * delta2_opt
+    deltas <- c(0, delta2_opt, delta3_opt)
+    betas <- beta_baseline + deltas
+    
+    # 3. Shared intercept to ensure E[Y] = 0
+    alpha_shared <- -sum(probs * betas * mu_X)
+    alphas <- rep(alpha_shared, 3)
+    
+    # 4. Residual variance to ensure Var(Y) = 1
+    y_means <- betas * mu_X + alphas
+    var_Y <- sum(probs * (betas^2 * var_X + (y_means - sum(probs * y_means))^2))
+    residual_var <- 1 - var_Y
+    sigmas_sq <- rep(residual_var, 3)
+    
+    names(betas) <- names(alphas) <- names(sigmas_sq) <- paste0("G", 1:3)
+    
+    return(list(
+      intercepts = alphas,
+      slopes = betas,
+      residual_variances = sigmas_sq
+    ))
+  }
+  
+}
+
+
+################################################################################
+# Step 4: Convert to Pooled Moderated Regression Parameters
+################################################################################
+
+group_to_moderated <- function(mu_X, var_X, probs, group_params, binary = F) {
+  
+  if(binary == T){
+    
+    stopifnot(length(mu_X) == 2, length(var_X) == 2, length(probs) == 2)
+    
+    # Extract components from group_params
+    intercepts <- group_params$intercepts
+    slopes <- group_params$slopes
+    resid_vars <- group_params$residual_variances
+    
+    # 1. Reference group: Group 1
+    beta_0 <- intercepts[1]
+    beta_X <- slopes[1]
+    
+    # 2. Dummy-coded differences for Group 2
+    beta_G2 <- intercepts[2] - intercepts[1]
+    beta_XG2 <- slopes[2] - slopes[1]
+    
+    # 3. Pooled residual variance
+    residual_variance <- sum(probs * resid_vars)
+    
+    return(list(
+      beta_0 = beta_0,
+      beta_G2 = beta_G2,
+      beta_X = beta_X,
+      beta_XG2 = beta_XG2,
+      residual_variance = residual_variance
+    ))
+    
+  } else{
+    
+    stopifnot(length(mu_X) == 3, length(var_X) == 3, length(probs) == 3)
+    
+    # Extract components from group_params
+    intercepts <- group_params$intercepts
+    slopes <- group_params$slopes
+    resid_vars <- group_params$residual_variances
+    
+    # 1. Reference group: Group 1
+    beta_0 <- intercepts[1]
+    beta_X <- slopes[1]
+    
+    # 2. Dummy-coded differences
+    beta_G2 <- intercepts[2] - intercepts[1]
+    beta_G3 <- intercepts[3] - intercepts[1]
+    
+    beta_XG2 <- slopes[2] - slopes[1]
+    beta_XG3 <- slopes[3] - slopes[1]
+    
+    # 3. Pooled residual variance
+    residual_variance <- sum(probs * resid_vars)
+    
+    return(list(
+      beta_0 = beta_0,
+      beta_G2 = beta_G2,
+      beta_G3 = beta_G3,
+      beta_X = beta_X,
+      beta_XG2 = beta_XG2,
+      beta_XG3 = beta_XG3,
+      residual_variance = residual_variance
+    ))
+    
+  }
+}
+
+
+################################################################################
+# Step 5: Measurement Model for Latent Factors
+################################################################################
+
+model_implied_moments <- function(mu_X, var_X, alpha, beta, residual_var_Y, 
+                                  n_X, n_Y, stanload, binary = F) {
+  
+  if(binary == T){
+    
+    # Measurement parameters
+    lambda_X <- stanload
+    theta_X  <- 1 - lambda_X^2  
+    
+    lambda_Y <- 1.00
+    theta_Y  <- 1 / stanload^2 - 1 # assumes that all raw Y loadings = 1
+    
+    # Latent means
+    mu_Y <- alpha + beta * mu_X
+    mu_indicators <- c(rep(lambda_X * mu_X, n_X),
+                       rep(lambda_Y * mu_Y, n_Y))
+    names(mu_indicators) <- c(paste0("X",1:n_X), paste0("Y",1:n_Y))
+    
+    # Latent covariance matrix (2×2)
+    # Var(X) = var_X; Cov(X,Y) = beta * var_X; Var(Y) = beta^2 var_X + residual_var_Y
+    Sigma_latent <- matrix(c(var_X, beta * var_X, beta * var_X, beta^2 * var_X + residual_var_Y),nrow = 2, byrow = TRUE)
+    
+    # Loading matrix
+    Lambda_X <- matrix(lambda_X, n_X, 1)
+    Lambda_Y <- matrix(lambda_Y, n_Y, 1)
+    Lambda   <- rbind(cbind(Lambda_X, matrix(0, n_X, 1)),
+                      cbind(matrix(0, n_Y, 1),  Lambda_Y))
+    
+    # Measurement error covariance
+    Theta_X <- diag(rep(theta_X, n_X))
+    Theta_Y <- diag(rep(theta_Y, n_Y))
+    Theta   <- as.matrix(bdiag(Theta_X, Theta_Y))
+    
+    # Model-implied observed covariance
+    Sigma_obs <- Lambda %*% Sigma_latent %*% t(Lambda) + Theta
+    rownames(Sigma_obs) <- colnames(Sigma_obs) <- names(mu_indicators)
+    
+    return(list(mean = mu_indicators, covariance = Sigma_obs))
+    
+  } else{
+    
+    # Measurement parameters
+    lambda_X <- stanload
+    theta_X  <- 1 - lambda_X^2  
+    
+    lambda_Y <- 1.00
+    theta_Y  <- 1 / stanload^2 - 1 # assumes that all raw Y loadings = 1
+    
+    # Latent means
+    mu_Y <- alpha + beta * mu_X
+    mu_indicators <- c(rep(lambda_X * mu_X, n_X),
+                       rep(lambda_Y * mu_Y, n_Y))
+    names(mu_indicators) <- c(paste0("X",1:n_X), paste0("Y",1:n_Y))
+    
+    # Latent covariance matrix (2×2)
+    # Var(X) = var_X; Cov(X,Y) = beta * var_X; Var(Y) = beta^2 var_X + residual_var_Y
+    Sigma_latent <- matrix(c(var_X, beta * var_X, beta * var_X, beta^2 * var_X + residual_var_Y),nrow = 2, byrow = TRUE)
+    
+    # Loading matrix
+    Lambda_X <- matrix(lambda_X, n_X, 1)
+    Lambda_Y <- matrix(lambda_Y, n_Y, 1)
+    Lambda   <- rbind(cbind(Lambda_X, matrix(0, n_X, 1)),
+                      cbind(matrix(0, n_Y, 1),  Lambda_Y))
+    
+    # Measurement error covariance
+    Theta_X <- diag(rep(theta_X, n_X))
+    Theta_Y <- diag(rep(theta_Y, n_Y))
+    Theta   <- as.matrix(bdiag(Theta_X, Theta_Y))
+    
+    # Model-implied observed covariance
+    Sigma_obs <- Lambda %*% Sigma_latent %*% t(Lambda) + Theta
+    rownames(Sigma_obs) <- colnames(Sigma_obs) <- names(mu_indicators)
+    
+    return(list(mean = mu_indicators, covariance = Sigma_obs))
+    
+  }
+  
+}
+
+
+################################################################################
+# Derive parameters for each set of conditions
+################################################################################
+
+parameter_values <- list()
+
+for (categories in 2:3) {
+  for (p in 1:3) {
+    
+    if(categories == 2){
+      probs <- group_probs2[p,]
+      bin <- T
+    } else {
+      probs <- group_probs3[p,]
+      bin <- F
+    }
+      
+    for (rsq_product in rsq_prod) {
+      
+      factor_means <- solve_factor_means(probs = probs, binary = bin)
+      
+      factor_vars <- solve_factor_variance(mu_X = factor_means, binary = bin,
+                                           probs = probs)$group_variances
+      
+      group_params <- solve_group_parameters(mu_X = factor_means, 
+                                             var_X = factor_vars, 
+                                             probs = probs,
+                                             rsq_baseline = rsq_baseline,
+                                             rsq_product = rsq_product,
+                                             binary = bin)
+      
+      moderated_params <- group_to_moderated(mu_X = factor_means,
+                                             var_X = factor_vars, probs = probs,
+                                             group_params = group_params,
+                                             binary = bin)
+      
+      for (items in num_loadings) {
+        for (load in loading_size) {
+          
+          # Group 1 mean vector and covariance matrix
+          moments_G1 <- model_implied_moments(
+            mu_X           = factor_means["mu1"],
+            var_X          = factor_vars["sigma_sq_g1"],
+            alpha          = group_params$intercepts["G1"],
+            beta           = group_params$slopes      ["G1"],
+            residual_var_Y = group_params$residual_variances["G1"],
+            n_X            = items,
+            n_Y            = items,
+            stanload       = load
+          )
+          
+          # Group 2 mean vector and covariance matrix
+          moments_G2 <- model_implied_moments(
+            mu_X           = factor_means["mu2"],
+            var_X          = factor_vars["sigma_sq_g2"],
+            alpha          = group_params$intercepts["G2"],
+            beta           = group_params$slopes      ["G2"],
+            residual_var_Y = group_params$residual_variances["G2"],
+            n_X            = items,
+            n_Y            = items,
+            stanload       = load
+          )
+          
+          if (bin == F){
+            # Group 3 mean vector and covariance matrix
+            moments_G3 <- model_implied_moments(
+              mu_X           = factor_means["mu3"],
+              var_X          = factor_vars["sigma_sq_g3"],
+              alpha          = group_params$intercepts["G3"],
+              beta           = group_params$slopes      ["G3"],
+              residual_var_Y = group_params$residual_variances["G3"],
+              n_X            = items,
+              n_Y            = items,
+              stanload       = load
+            )
+          }
+          
+          name <- paste0("cat",categories,"_prob",p,"_rsq",rsq_product,"_items",
+                         items,"_loading",load)
+          
+          parameter_values[[name]] <- list(
+            G1 = moments_G1,
+            G2 = moments_G2
+          )
+          if (bin == FALSE) {
+            parameter_values[[name]]$G3 <- moments_G3
+          }
+          
+          
+        }
+      }
+    }
+  }
+}
+
+
+save(parameter_values, file = "parameter_values.rda")
