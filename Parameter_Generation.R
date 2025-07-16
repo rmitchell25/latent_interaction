@@ -521,6 +521,9 @@ for (categories in 2:3) {
             parameter_values[[name]]$G3 <- moments_G3
           }
           
+          parameter_values[[name]]$group_parameters <- group_params
+          
+          parameter_values[[name]]$mod_parameters <- moderated_params
           
         }
       }
