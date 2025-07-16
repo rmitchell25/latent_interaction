@@ -10,6 +10,7 @@
 #DIRNAME=/u/project/cenders/remusmit/sim_latent_interaction
 NUMREPS=1000
 
+cat=(2 3)
 groupprob=(1 2 3)
 rsq=(0 .03 .07)
 sample=(100  150  200  250  300  350  400  500 1000)
@@ -34,7 +35,7 @@ if [ ${INTERACTIVE} = 1 ]
 if [ ${RUNONCLUSTER} = 0 ]
 then
 	# paths
-	DIRNAME=~/Desktop/sim_latent_interaction
+	DIRNAME=~/Documents/GitHub/latent_interaction/sim_latent_interaction
 	PROGDIR=${DIRNAME}/programs
 	MISCDIR=${DIRNAME}/misc
 	OUTFDIR=${DIRNAME}/joboutputs
@@ -84,21 +85,22 @@ echo "start time: " ` date ` #>> ${MISCDIR}/time_log.txt
 
 for (( REPLOOP = ${REPFIRST}; REPLOOP < ${REPLAST}; REPLOOP++ )); do
 
-	FILENAME=prob${PROBLOOP}rsq${RSQLOOP}N${NLOOP}load${LOADLOOP}item${ITEMLOOP}rep${REPLOOP}
+	FILENAME=cat${CATLOOP}prob${PROBLOOP}rsq${RSQLOOP}N${NLOOP}load${LOADLOOP}item${ITEMLOOP}rep${REPLOOP}
 
+	SEEDLINECAT=$((${CATLOOP} *${#groupprob[@]} *${#rsq[@]} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} * ${NUMREPS}))
 	SEEDLINEPR=$((${PROBLOOP} * ${#rsq[@]} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} * ${NUMREPS}))
 	SEEDLINER=$((${RSQLOOP} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} * ${NUMREPS}))
 	SEEDLINEN=$((${NLOOP} * ${#loading[@]} * ${#nitem[@]} * ${NUMREPS}))
 	SEEDLINEL=$((${LOADLOOP} * ${#nitem[@]} * ${NUMREPS}))
 	SEEDLINENI=$((${ITEMLOOP} * ${NUMREPS}))
-	SEEDLINENUM=$((${SEEDLINEPR} + ${SEEDLINER} + ${SEEDLINEN} + ${SEEDLINEL} + ${SEEDLINENI}))
+	SEEDLINENUM=$((${SEEDLINECAT} + ${SEEDLINEPR} + ${SEEDLINER} + ${SEEDLINEN} + ${SEEDLINEL} + ${SEEDLINENI}))
 
 	SEED=$(sed -n "${SEEDLINENUM}p" "${MISCDIR}/seedlist.dat")
 
 	echo "Seed line number = ${SEEDLINENUM}; seed value = ${SEED}"
 
 
-	${RPATH} --no-save --slave --args ${RUNONCLUSTER} ${DIRNAME} ${FILENAME} ${groupprob[PROBLOOP]} ${rsq[RSQLOOP]} ${sample[NLOOP]} ${loading[LOADLOOP]} ${nitem[ITEMLOOP]} ${REPLOOP} ${SEED} < ${PROGDIR}/simulation_one_rep.R
+	${RPATH} --no-save --slave --args ${RUNONCLUSTER} ${DIRNAME} ${FILENAME} ${cat[CATLOOP]} ${groupprob[PROBLOOP]} ${rsq[RSQLOOP]} ${sample[NLOOP]} ${loading[LOADLOOP]} ${nitem[ITEMLOOP]} ${REPLOOP} ${SEED} < ${PROGDIR}/simulation_one_rep.R
 
 done   
 

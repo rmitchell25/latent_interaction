@@ -17,121 +17,116 @@ if(runfromshell){
   dirname <- (runvars[2])
   filename <- (runvars[3])
   
-  group_probs <- as.numeric(runvars[4])
-  rsq_prod <- as.numeric(runvars[5])
-  N <- as.numeric(runvars[6])
-  n_items <- as.numeric(runvars[7])
+  categories <- as.numeric(runvars[4])
+  group_prob <- as.numeric(runvars[5])
+  rsq_prod <- as.numeric(runvars[6])
+  N <- as.numeric(runvars[7])
   loading <- as.numeric(runvars[8])
+  n_items <- as.numeric(runvars[9])
+  rep <- as.numeric(runvars[10])
+  seed <- as.numeric(runvars[11])
 }else{
   runoncluster <- 0
-  dirname <- "latent_interaction"
+  dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
   filename<- "g1prod03N350load5item6"
   
+  cat <- 2
   group_prob <- 1  # 1:3
   rsq_prod <- 0.03    # 0, 0.03, 0.07
   N <- 350      # seq(100,400, by = 50), 500, 1000
   loading <- .5   # .5 or .8
   n_items <- 6    # 6 or 12
+  rep <- 1
+  seed <- 75080
 }
 
 # set paths
 if(runoncluster == 1){setwd(dirname)} else if(runoncluster == 0){setwd(paste0(dirname))}
 
 
-# pre-set values
-muY <- 0
-varY <- 1
-corr_Xs <- .20
-rsq_baseline <- .13
-communality <- .75^2
-error_var_Y <- (1/communality)-1
+group_probs3 <- rbind(c(.34, .33, .33),
+                      c(.40, .40, .20),
+                      c(.60, .20, .20))
+group_probs2 <- rbind(c(.50,.50),
+                      c(.60,.40),
+                      c(.80,.20))
+if(cat == 2){
+  probs <- group_probs2[group_prob,]
+  bin <- T
+} else {
+  probs <- group_probs3[group_prob,]
+  bin <- F
+}
 
 
 ############################################################
-# Produce population parameters
+# Pull population parameters
 ############################################################
 
-# Pull structural parameters
-load(file = "structural_params.rda")
-params <- structural_params[structural_params$group == group_prob & structural_params$prod_rsq == rsq_prod, ]
-colnames(params) <- rownames(params) <- NULL
-params <- as.numeric(params[3:9])  # b0:b5, resvar
+# Load parameters file
+load(file = paste0(dirname,"/misc/parameter_values.rda"))
 
-# Create loading vector of X and find error_var
-lambdaX <- rep(loading, n_items)
-error_var_X <- 1 - loading^2
+name <- paste0("cat",cat,"_prob",group_prob,"_rsq",rsq_prod,"_items",
+               n_items,"_loading",loading)
 
-# Create loading vector of X and find error_var  
-lambdaY <- rep(1, n_items)
-communality <- .75^2
-error_var_Y <- (1/communality)-1
+# Moderation parameters
+mod_parameters <- parameter_values[[name]]$mod_parameters 
 
-# covariance matrix of latent difference scores and latent X
-load(file = "latent_means.rda")
-muX <- latent_means[group_prob,]
-sigma <- matrix(corr_Xs, nrow = 3, ncol = 3)
-diag(sigma) <- 1; sigma[2,1] <- sigma[1,2] <- .5
+# Multigroup parameters
+group_parameters <- parameter_values[[name]]$group_parameters 
+
+# Covariance matrix and mean vector per group
+moments_G1 <- parameter_values[[name]]$G1
+moments_G2 <- parameter_values[[name]]$G2
+if(bin == F){moments_G3 <- parameter_values[[name]]$G3}
 
 
 ############################################################
-# Generate data 
+# Generate data
 ############################################################
 
-# generate Xs
-Xs <- rmvnorm(N,muX,sigma)
-nomX <- ifelse(Xs[,1] < 0 & Xs[,2] < 0, 1, 999)
-nomX <- ifelse(Xs[,1] > 0 & Xs[,1] > Xs[,2], 2, nomX)
-nomX <- ifelse(Xs[,2] > 0 & Xs[,2] > Xs[,1], 3, nomX)
-# summarytools::freq(nomX)
+ng <- N * probs
 
-# create dummy codes for Y generation
-C2 <- ifelse(nomX == '2', 1, 0) 
-C3 <- ifelse(nomX == '3', 1, 0)
+g1dat <- cbind(1,rmvnorm(ng[1], as.vector(moments_G1$mean), as.matrix(moments_G1$covariance)))
+g2dat <- cbind(2,rmvnorm(ng[2], as.vector(moments_G2$mean), as.matrix(moments_G2$covariance)))
 
-# generate Y
-code_data <- cbind(1,C2,C3,Xs[,3],C2*Xs[,3],C3*Xs[,3])
-Y <- code_data %*% params[1:6] + rnorm(N, 0, sqrt(params[7]))
+if (bin == F){
+  g3dat <- cbind(3,rmvnorm(ng[3], as.vector(moments_G3$mean), as.matrix(moments_G3$covariance)))
+  dat <- as.data.frame(rbind(g1dat,g2dat,g3dat))
+  names(dat) <- c('G',paste0('X',1:num_indicators),paste0('Y',1:num_indicators))
+} else {
+  dat <- as.data.frame(rbind(g1dat,g2dat))
+  names(dat) <- c('G',paste0('X',1:n_items),paste0('Y',1:n_items))
+}
 
-# generate each observed indicator of X = lambda * eta_X + error
-Xindicator_matrix <- sapply(1:n_items, function(i) {
-  lambdaX[i] * Xs[,3] + rnorm(N, mean = 0, sd = sqrt(error_var_X))
-})
-
-# generate each observed indicator of Y = lambda * eta_Y + error
-Yindicator_matrix <- sapply(1:n_items, function(i) {
-  lambdaY[i] * Y + rnorm(N, mean = 0, sd = sqrt(error_var_Y))
-})
-
-
-data <- cbind.data.frame(Y,nomX,Xindicator_matrix,Xs[,3],Yindicator_matrix)
-colnames(data) <- c('Y','nomX', paste0("X", 1:n_items),'eta',paste0("Y", 1:n_items))
 
 ############################################################
-# Fit in Blimp
+# Fit in Blimp and save results
 ############################################################
 
 blimp_model <- rblimp(
-  data = data,
+  data = dat,
   burn = 2000,
   iter = 5000,
   seed = 91030,
-  nominal = 'nomX',
-  latent = 'X_eta',
+  nominal = 'G',
+  latent = 'X_eta Y',
   model = '
   structural:
-  Y ~ nomX X_eta nomX*X_eta;
+  Y ~ G X_eta G*X_eta;
   measurement:
   X_eta ~~ X_eta@1;
   X_eta -> X1@lo1 X2:X6;
   Y -> Y1@1 Y2:Y6;
   predictors:
-  nomX ~ X_eta',
+  G ~ X_eta',
   parameters = 'lo1 ~ trunc(0,inf)'
 )
 
+blimp_est <- blimp_model@estimates[1:9,]
 
 ############################################################
-# Fit multigroup version in Laavan 
+# Fit multigroup version with MPLus Automation 
 ############################################################
 
 
@@ -146,9 +141,9 @@ blimp_model <- rblimp(
 # Save results
 ############################################################
 
+results <- matrix(c(group_prob,rsq_prod,N,loading,n_items, rep, seed), nrow = 1)
+colnames(results) <- c("group_prob","rsq_prod","N","loading","n_items", "rep", "seed")
 
-
-
-
+write.table(results,paste0(dirname,'/results/',filename,'.dat'),row.names = F,col.names = F)
 
 
