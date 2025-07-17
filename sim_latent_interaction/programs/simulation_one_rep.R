@@ -5,6 +5,7 @@ library(psych)
 library(dplyr)
 library(lavaan)
 library(rblimp)
+library(MplusAutomation)
 options(scipen=999)
 
 runfromshell <- F
@@ -17,7 +18,7 @@ if(runfromshell){
   dirname <- (runvars[2])
   filename <- (runvars[3])
   
-  categories <- as.numeric(runvars[4])
+  cat <- as.numeric(runvars[4])
   group_prob <- as.numeric(runvars[5])
   rsq_prod <- as.numeric(runvars[6])
   N <- as.numeric(runvars[7])
@@ -43,6 +44,10 @@ if(runfromshell){
 # set paths
 if(runoncluster == 1){setwd(dirname)} else if(runoncluster == 0){setwd(paste0(dirname))}
 
+
+############################################################
+# Select group probabilities based on category condition
+############################################################
 
 group_probs3 <- rbind(c(.34, .33, .33),
                       c(.40, .40, .20),
@@ -93,7 +98,7 @@ g2dat <- cbind(2,rmvnorm(ng[2], as.vector(moments_G2$mean), as.matrix(moments_G2
 if (bin == F){
   g3dat <- cbind(3,rmvnorm(ng[3], as.vector(moments_G3$mean), as.matrix(moments_G3$covariance)))
   dat <- as.data.frame(rbind(g1dat,g2dat,g3dat))
-  names(dat) <- c('G',paste0('X',1:num_indicators),paste0('Y',1:num_indicators))
+  names(dat) <- c('G',paste0('X',1:n_items),paste0('Y',1:n_items))
 } else {
   dat <- as.data.frame(rbind(g1dat,g2dat))
   names(dat) <- c('G',paste0('X',1:n_items),paste0('Y',1:n_items))
@@ -113,7 +118,7 @@ blimp_model <- rblimp(
   latent = 'X_eta Y',
   model = '
   structural:
-  Y ~ G X_eta G*X_eta;
+  Y ~ 1 G X_eta G*X_eta;
   measurement:
   X_eta ~~ X_eta@1;
   X_eta -> X1@lo1 X2:X6;
@@ -123,12 +128,51 @@ blimp_model <- rblimp(
   parameters = 'lo1 ~ trunc(0,inf)'
 )
 
-blimp_est <- blimp_model@estimates[1:9,]
 
 ############################################################
 # Fit multigroup version with MPLus Automation 
 ############################################################
 
+
+if (bin == T & n_items == 6) {
+  model_syntax <- "
+  MODEL:
+    %OVERALL%
+      Y BY y1 y2 y3 y4 y5 y6;
+      X BY x1 x2 x3 x4 x5 x6;
+      Y ON X;
+  
+    %group1%
+      [f1@0];
+      f1@1;
+      [X@0];
+      X@1;
+  
+    %group2%
+      [f1];
+      f1;
+      [X];
+      X;"
+  mplus_model <- mplusObject(
+    TITLE = "Multigroup Model;",
+    VARIABLE = "
+    NAMES = G x1 x2 x3 x4 x5 x6 y1 y2 y3 y4 y5 y6;
+    USEVARIABLES = G x1 x2 x3 x4 x5 x6 y1 y2 y3 y4 y5 y6;
+    GROUPING = G (1 = group1 2 = group2);",
+    MODEL = model_syntax,
+    rdata = dat,
+    usevariables = c('G',paste0('X',1:n_items),paste0('Y',1:n_items)),
+    OUTPUT = "SAMPSTAT STANDARDIZED TECH1 TECH4;"
+  )
+} else {
+  
+}
+
+fit <- mplusModeler(
+  mplus_model,
+  modelout = "multigroup.inp",
+  run = 1L  # set to 0 to write the input but not run
+)
 
 
 ############################################################
@@ -138,12 +182,52 @@ blimp_est <- blimp_model@estimates[1:9,]
 
 
 ############################################################
-# Save results
+# Results: Power, Type 2 Error, Relative Bias, MSE, CI Coverage
 ############################################################
 
-results <- matrix(c(group_prob,rsq_prod,N,loading,n_items, rep, seed), nrow = 1)
-colnames(results) <- c("group_prob","rsq_prod","N","loading","n_items", "rep", "seed")
+if (bin == F){
+  results <- as.data.frame(matrix(999, nrow = 7, ncol = 15))
+  param.id <- c("beta_0","beta_G2","beta_G3","beta_X","beta_XG2","beta_XG3","res.var")
+  mod.est <- as.numeric(c(blimp_model@estimates[2:7,1],blimp_model@estimates[1,1]))
+  
+} else {
+  results <- as.data.frame(matrix(999, nrow = 5, ncol = 15))
+  param.id <- c("beta_0","beta_G2","beta_X","beta_XG2","res.var")
+  mod.est <- as.numeric(c(blimp_model@estimates[2:5,1],blimp_model@estimates[1,1]))
+  
+}
 
+
+# Moderation Significance and CI Coverage
+pvalues1 <- as.numeric(c(blimp_model@estimates[2:nrow(results),6],blimp_model@estimates[1,6]))
+sig_mod<- rep(0,nrow(results))
+sig_mod[pvalues1 < .05]<-1
+
+CI_lower <- as.numeric(c(blimp_model@estimates[2:nrow(results),3],blimp_model@estimates[1,3]))
+CI_upper <- as.numeric(c(blimp_model@estimates[2:nrow(results),4],blimp_model@estimates[1,4]))
+CI_cov_mod<- rep(0,nrow(results))
+CI_cov_mod[CI_lower < as.numeric(mod_parameters) & CI_upper > as.numeric(mod_parameters)] <-1
+
+
+# Save results
+results[,1] <- cat
+results[,2] <- group_prob
+results[,3] <- rsq_prod
+results[,4] <- N
+results[,5] <- loading
+results[,6] <- n_items
+results[,7] <- 1            # 1 = moderation parameters
+results[,8] <- param.id
+results[,9] <- mod.est
+results[,10] <- as.numeric(mod_parameters)
+results[,11] <- results[,9] - results[,10]
+results[,12] <- results[,11]/results[,10]
+results[,13] <- results[,11]^2
+results[,14] <- sig_mod
+results[,15] <- CI_cov_mod
+  
+colnames(results) <- c("categories", "group_prob", "rsq_prod", "N", "loading", 
+                       "n_items", "model_type", "param.id", "mod_est", "true_mod", 
+                       "bias", "rel.bias", "squared_bias", "sig", "ci.cov")
 write.table(results,paste0(dirname,'/results/',filename,'.dat'),row.names = F,col.names = F)
-
 
