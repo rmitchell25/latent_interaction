@@ -28,7 +28,8 @@ if(runfromshell){
   seed <- as.numeric(runvars[11])
 }else{
   runoncluster <- 0
-  dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
+  dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
+  # dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
   filename<- "g1prod03N350load5item6"
   
   cat <- 2
@@ -133,26 +134,29 @@ blimp_model <- rblimp(
 # Fit multigroup version with MPLus Automation 
 ############################################################
 
+# Just includes general structure... working on Mplus script
 
 if (bin == T & n_items == 6) {
   model_syntax <- "
   MODEL:
-    %OVERALL%
-      Y BY y1 y2 y3 y4 y5 y6;
-      X BY x1 x2 x3 x4 x5 x6;
-      Y ON X;
+    Y BY y1 y2 y3 y4 y5 y6;
+    X BY x1* x2 x3 x4 x5 x6;
+
+    Y ON X;
+
+  model group1:
   
-    %group1%
-      [f1@0];
-      f1@1;
-      [X@0];
-      X@1;
+      [Y@0];   
+      Y;     
+      [X@0];   
+      X@1;     
   
-    %group2%
-      [f1];
-      f1;
+  model group2:
+  
+      [Y@0];
+      Y;  
       [X];
-      X;"
+      X@1;"
   mplus_model <- mplusObject(
     TITLE = "Multigroup Model;",
     VARIABLE = "
@@ -179,6 +183,13 @@ fit <- mplusModeler(
 # Fit version with sum score
 ############################################################
 
+# add sum scores to data set
+X_sum <- dat %>% select(starts_with("X")) %>% rowSums()
+Y_sum <- dat %>% select(starts_with("Y")) %>% rowSums()
+dat <- cbind(dat, X_sum, Y_sum)
+
+# run analysis
+sum_model <- summary(lm(Y_sum ~ G + X_sum + G*X_sum, data = dat))
 
 
 ############################################################

@@ -434,6 +434,70 @@ model_implied_moments <- function(mu_X, var_X, alpha, beta, residual_var_Y,
 
 
 ################################################################################
+# Step 6: Solve for Sum Score Parameters
+################################################################################
+
+sum_score_parameter_group <- function(loading, n_X, n_Y, mu_X, var_X, probs, rsq_baseline, rsq_product,
+                                      binary = F){
+  
+  mu_X <- as.numeric(mu_X)
+  var_X <- 1
+  probs <- as.numeric(probs)
+  
+  # Variance for sum of X
+  lambdaX <- matrix(rep(loading, n_X), ncol = 1)
+  thetaX <- 1 - lambdaX^2
+  sigmaX <- lambdaX %*% var_X %*% t(lambdaX) + diag(as.numeric(thetaX), n_X)
+  var_X_sum <- sum(sigmaX)
+  
+  # Variance for sum of Y
+  lambdaY <- matrix(rep(loading, n_Y), ncol = 1)
+  thetaY <- 1 - lambdaY^2
+  sigmaY <- lambdaY %*% var_Y %*% t(lambdaY) + diag(as.numeric(thetaY), n_Y)
+  Y_var_sum <- sum(sigmaY)
+  
+  # Fix baseline slope (assumes full sample Var(X) = 1)
+  beta_baseline <- sqrt((rsq_baseline*Y_var_sum)/var_X_sum)
+  
+  # Optimize delta2 (only one delta needed in two-group case)
+  objective <- function(delta2) {
+    deltas <- c(0, delta2)  # Group 1 is reference
+    betas <- beta_baseline + deltas
+    
+    # Compute group-level explained variance
+    y_means <- betas * mu_X
+    mean_y <- sum(probs * y_means)
+    
+    explained_var <- sum(probs * (betas^2 * var_X_sum + (y_means - mean_y)^2))
+    achieved_rsq <- explained_var
+    
+    return((achieved_rsq - (rsq_baseline + rsq_product))^2)
+  }
+  
+  delta2_opt <- optimize(objective, interval = c(0, 5))$minimum
+  deltas <- c(0, delta2_opt)
+  betas <- beta_baseline + deltas
+  
+  # Shared intercept to ensure E[Y] = 0
+  alpha_shared <- -sum(probs * betas * mu_X)
+  alphas <- rep(alpha_shared, 2)
+  
+  # Residual variance
+  y_means <- betas * mu_X + alphas
+  var_Y <- sum(probs * (betas^2 * var_X + (y_means - sum(probs * y_means))^2))
+  residual_var <- Y_var_sum - var_Y
+  sigmas_sq <- rep(residual_var, 2)
+  
+  names(betas) <- names(alphas) <- names(sigmas_sq) <- paste0("G", 1:2)
+  
+  return(list(
+    intercepts = alphas,
+    slopes = betas,
+    residual_variances = sigmas_sq
+  ))
+}
+
+################################################################################
 # Derive parameters for each set of conditions
 ################################################################################
 
@@ -468,6 +532,7 @@ for (categories in 2:3) {
                                              var_X = factor_vars, probs = probs,
                                              group_params = group_params,
                                              binary = bin)
+      
       
       for (items in num_loadings) {
         for (load in loading_size) {
@@ -509,6 +574,15 @@ for (categories in 2:3) {
               stanload       = load
             )
           }
+          
+          sum_group <- sum_score_parameter_group(loading = load, n_X = items, 
+                                                 n_Y = items, mu_X = factor_means, 
+                                                 var_X = 1, var_Y = 1,
+                                                 group_probs = probs ,
+                                                 rsq_prod = rsq_product, binary = TRUE,
+                                                 target_corr = corr_Xs)
+          
+          
           
           name <- paste0("cat",categories,"_prob",p,"_rsq",rsq_product,"_items",
                          items,"_loading",load)
