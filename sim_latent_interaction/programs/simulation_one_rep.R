@@ -86,6 +86,9 @@ moments_G1 <- parameter_values[[name]]$G1
 moments_G2 <- parameter_values[[name]]$G2
 if(bin == F){moments_G3 <- parameter_values[[name]]$G3}
 
+# sum score parameters
+sum_score_params <- parameter_values[[name]]$sum_score_parameters 
+
 
 ############################################################
 # Generate data
@@ -159,10 +162,8 @@ if (bin == T & n_items == 6) {
       X@1;"
   mplus_model <- mplusObject(
     TITLE = "Multigroup Model;",
-    VARIABLE = "
-    NAMES = G x1 x2 x3 x4 x5 x6 y1 y2 y3 y4 y5 y6;
-    USEVARIABLES = G x1 x2 x3 x4 x5 x6 y1 y2 y3 y4 y5 y6;
-    GROUPING = G (1 = group1 2 = group2);",
+    VARIABLE = c('G',paste0('X',1:n_items),paste0('Y',1:n_items)),
+    GROUPING = "G (1 = group1 2 = group2);",
     MODEL = model_syntax,
     rdata = dat,
     usevariables = c('G',paste0('X',1:n_items),paste0('Y',1:n_items)),
