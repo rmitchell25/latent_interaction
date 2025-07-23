@@ -282,11 +282,11 @@ solve_group_parameters <- function(mu_X, var_X, probs, rsq_baseline, rsq_product
 # Step 4: Convert to Pooled Moderated Regression Parameters
 ################################################################################
 
-group_to_moderated <- function(mu_X, var_X, probs, group_params, binary = F) {
+group_to_moderated <- function(mu_X, probs, group_params, binary = F) {
   
   if(binary == T){
     
-    stopifnot(length(mu_X) == 2, length(var_X) == 2, length(probs) == 2)
+    stopifnot(length(mu_X) == 2, length(probs) == 2)
     
     # Extract components from group_params
     intercepts <- group_params$intercepts
@@ -314,7 +314,7 @@ group_to_moderated <- function(mu_X, var_X, probs, group_params, binary = F) {
     
   } else{
     
-    stopifnot(length(mu_X) == 3, length(var_X) == 3, length(probs) == 3)
+    stopifnot(length(mu_X) == 3, length(probs) == 3)
     
     # Extract components from group_params
     intercepts <- group_params$intercepts
@@ -437,11 +437,11 @@ model_implied_moments <- function(mu_X, var_X, alpha, beta, residual_var_Y,
 # Step 6: Solve for Sum Score Parameters
 ################################################################################
 
-sum_score_parameter_group <- function(loading, n_X, n_Y, mu_X, var_X, probs, rsq_baseline, rsq_product,
+sum_score_parameter_group <- function(loading, n_X, n_Y, mu_X, probs, rsq_baseline, rsq_product,
                                       binary = F){
   
   mu_X <- as.numeric(mu_X)
-  var_X <- 1
+  var_X <- var_Y <- 1
   probs <- as.numeric(probs)
   
   # Variance for sum of X
@@ -456,45 +456,94 @@ sum_score_parameter_group <- function(loading, n_X, n_Y, mu_X, var_X, probs, rsq
   sigmaY <- lambdaY %*% var_Y %*% t(lambdaY) + diag(as.numeric(thetaY), n_Y)
   Y_var_sum <- sum(sigmaY)
   
-  # Fix baseline slope (assumes full sample Var(X) = 1)
-  beta_baseline <- sqrt((rsq_baseline*Y_var_sum)/var_X_sum)
-  
-  # Optimize delta2 (only one delta needed in two-group case)
-  objective <- function(delta2) {
-    deltas <- c(0, delta2)  # Group 1 is reference
+  if(bin == T){
+    
+    # Fix baseline slope (assumes full sample Var(X) = 1)
+    beta_baseline <- sqrt((rsq_baseline*Y_var_sum)/var_X_sum)
+    
+    # Optimize delta2 (only one delta needed in two-group case)
+    objective <- function(delta2) {
+      deltas <- c(0, delta2)  # Group 1 is reference
+      betas <- beta_baseline + deltas
+      
+      # Compute group-level explained variance
+      y_means <- betas * mu_X
+      mean_y <- sum(probs * y_means)
+      
+      explained_var <- sum(probs * (betas^2 * var_X_sum + (y_means - mean_y)^2)/Y_var_sum)
+      achieved_rsq <- explained_var
+      
+      return((achieved_rsq - (rsq_baseline + rsq_product))^2)
+    }
+    
+    delta2_opt <- optimize(objective, interval = c(0, 5))$minimum
+    deltas <- c(0, delta2_opt)
     betas <- beta_baseline + deltas
     
-    # Compute group-level explained variance
-    y_means <- betas * mu_X
-    mean_y <- sum(probs * y_means)
+    # Shared intercept to ensure E[Y] = 0
+    alpha_shared <- -sum(probs * betas * mu_X)
+    alphas <- rep(alpha_shared, 2)
     
-    explained_var <- sum(probs * (betas^2 * var_X_sum + (y_means - mean_y)^2))
-    achieved_rsq <- explained_var
+    # Residual variance
+    y_means <- betas * mu_X + alphas
+    var_Y <- sum(probs * (betas^2 * var_X + (y_means - sum(probs * y_means))^2))
+    residual_var <- Y_var_sum - var_Y
+    sigmas_sq <- rep(residual_var, 2)
     
-    return((achieved_rsq - (rsq_baseline + rsq_product))^2)
+    names(betas) <- names(alphas) <- names(sigmas_sq) <- paste0("G", 1:2)
+    
+    return(list(
+      intercepts = alphas,
+      slopes = betas,
+      residual_variances = sigmas_sq
+    ))
+    
+  } else {
+    
+    # Fix baseline slope (assumes full sample Var(X) = 1)
+    beta_baseline <- sqrt((rsq_baseline*Y_var_sum)/var_X_sum)
+    
+    # Optimize delta2 under constraint delta3 = 2 * delta2
+    objective <- function(delta2) {
+      delta3 <- 2 * delta2
+      deltas <- c(0, delta2, delta3)
+      betas <- beta_baseline + deltas
+      
+      # Compute group-level explained variance
+      y_means <- betas * mu_X
+      mean_y <- sum(probs * y_means)
+      
+      explained_var <-  sum(probs * (betas^2 * var_X_sum + (y_means - mean_y)^2)/Y_var_sum)
+      achieved_rsq <- explained_var
+      
+      return((achieved_rsq - (rsq_baseline + rsq_product))^2)
+    }
+    
+    delta2_opt <- optimize(objective, interval = c(0, 5))$minimum
+    delta3_opt <- 2 * delta2_opt
+    deltas <- c(0, delta2_opt, delta3_opt)
+    betas <- beta_baseline + deltas
+    
+    # Shared intercept to ensure E[Y] = 0
+    alpha_shared <- -sum(probs * betas * mu_X)
+    alphas <- rep(alpha_shared, 3)
+    
+    # 4. Residual variance to ensure Var(Y) = 1
+    y_means <- betas * mu_X + alphas
+    var_Y <- sum(probs * (betas^2 * var_X + (y_means - sum(probs * y_means))^2))
+    residual_var <- 1 - var_Y
+    sigmas_sq <- rep(residual_var, 3)
+    
+    names(betas) <- names(alphas) <- names(sigmas_sq) <- paste0("G", 1:3)
+    
+    return(list(
+      intercepts = alphas,
+      slopes = betas,
+      residual_variances = sigmas_sq
+    ))
+    
   }
   
-  delta2_opt <- optimize(objective, interval = c(0, 5))$minimum
-  deltas <- c(0, delta2_opt)
-  betas <- beta_baseline + deltas
-  
-  # Shared intercept to ensure E[Y] = 0
-  alpha_shared <- -sum(probs * betas * mu_X)
-  alphas <- rep(alpha_shared, 2)
-  
-  # Residual variance
-  y_means <- betas * mu_X + alphas
-  var_Y <- sum(probs * (betas^2 * var_X + (y_means - sum(probs * y_means))^2))
-  residual_var <- Y_var_sum - var_Y
-  sigmas_sq <- rep(residual_var, 2)
-  
-  names(betas) <- names(alphas) <- names(sigmas_sq) <- paste0("G", 1:2)
-  
-  return(list(
-    intercepts = alphas,
-    slopes = betas,
-    residual_variances = sigmas_sq
-  ))
 }
 
 ################################################################################
@@ -528,8 +577,7 @@ for (categories in 2:3) {
                                              rsq_product = rsq_product,
                                              binary = bin)
       
-      moderated_params <- group_to_moderated(mu_X = factor_means,
-                                             var_X = factor_vars, probs = probs,
+      moderated_params <- group_to_moderated(mu_X = factor_means,probs = probs,
                                              group_params = group_params,
                                              binary = bin)
       
@@ -575,14 +623,13 @@ for (categories in 2:3) {
             )
           }
           
-          sum_group <- sum_score_parameter_group(loading = load, n_X = items, 
-                                                 n_Y = items, mu_X = factor_means, 
-                                                 var_X = 1, var_Y = 1,
-                                                 group_probs = probs ,
-                                                 rsq_prod = rsq_product, binary = TRUE,
-                                                 target_corr = corr_Xs)
-          
-          
+          sum_group <- sum_score_parameter_group(loading = load, n_X = items,
+                                                 n_Y = items, mu_X = factor_means,
+                                                 probs = probs,rsq_baseline = rsq_baseline,
+                                                 rsq_prod = rsq_product, binary = bin)
+
+          sum_mod <- group_to_moderated(mu_X = factor_means, probs = probs,
+                                        group_params = sum_group, binary = bin)
           
           name <- paste0("cat",categories,"_prob",p,"_rsq",rsq_product,"_items",
                          items,"_loading",load)
@@ -598,6 +645,8 @@ for (categories in 2:3) {
           parameter_values[[name]]$group_parameters <- group_params
           
           parameter_values[[name]]$mod_parameters <- moderated_params
+          
+          parameter_values[[name]]$sum_score_parameters <- sum_mod
           
         }
       }
