@@ -75,8 +75,8 @@ for (cat in 2:3) {
             
             blimp_model <- rblimp(
               data = dat,
-              burn = 2000,
-              iter = 5000,
+              burn = 5000,
+              iter = 10000,
               seed = 91030,
               nominal = 'G',
               latent = 'X_eta Y',
