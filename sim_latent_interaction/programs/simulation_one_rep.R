@@ -1,11 +1,7 @@
-library(mvtnorm)
-library(gridExtra)
-library(grid)
-library(psych)
-library(dplyr)
+library(mvtnorm) 
+library(dplyr) 
 library(lavaan)
-library(rblimp)
-library(MplusAutomation)
+library(rblimp) 
 options(scipen=999)
 
 runfromshell <- F
@@ -115,8 +111,8 @@ if (bin == F){
 
 blimp_model <- rblimp(
   data = dat,
-  burn = 2000,
-  iter = 5000,
+  burn = 10000,
+  iter = 10000,
   seed = 91030,
   nominal = 'G',
   latent = 'X_eta Y',
@@ -134,50 +130,18 @@ blimp_model <- rblimp(
 
 
 ############################################################
-# Fit multigroup version with MPLus Automation 
+# Fit multigroup version with Lavaan
 ############################################################
 
-# Just includes general structure... working on Mplus script
+model <- '
+  X =~ X1 + X2 + X3 + X4 + X5 + X6
+  Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6
 
-if (bin == T & n_items == 6) {
-  model_syntax <- "
-  MODEL:
-    Y BY y1 y2 y3 y4 y5 y6;
-    X BY x1* x2 x3 x4 x5 x6;
+  Y ~ X   
+'
+fit <- sem(model, data = dat, group = "G", group.equal = "loadings", std.lv = TRUE)
 
-    Y ON X;
-
-  model group1:
-  
-      [Y@0];   
-      Y;     
-      [X@0];   
-      X@1;     
-  
-  model group2:
-  
-      [Y@0];
-      Y;  
-      [X];
-      X@1;"
-  mplus_model <- mplusObject(
-    TITLE = "Multigroup Model;",
-    VARIABLE = c('G',paste0('X',1:n_items),paste0('Y',1:n_items)),
-    GROUPING = "G (1 = group1 2 = group2);",
-    MODEL = model_syntax,
-    rdata = dat,
-    usevariables = c('G',paste0('X',1:n_items),paste0('Y',1:n_items)),
-    OUTPUT = "SAMPSTAT STANDARDIZED TECH1 TECH4;"
-  )
-} else {
-  
-}
-
-fit <- mplusModeler(
-  mplus_model,
-  modelout = "multigroup.inp",
-  run = 1L  # set to 0 to write the input but not run
-)
+summary(fit)
 
 
 ############################################################
