@@ -24,8 +24,8 @@ if(runfromshell){
   seed <- as.numeric(runvars[11])
 }else{
   runoncluster <- 0
-  dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
-  # dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
+  # dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
+  dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
   filename<- "g1prod03N350load5item6"
   
   cat <- 2
@@ -86,6 +86,7 @@ if(bin == F){moments_G3 <- parameter_values[[name]]$G3}
 sum_score_params <- parameter_values[[name]]$sum_score_parameters 
 
 
+
 ############################################################
 # Generate data
 ############################################################
@@ -103,6 +104,7 @@ if (bin == F){
   dat <- as.data.frame(rbind(g1dat,g2dat))
   names(dat) <- c('G',paste0('X',1:n_items),paste0('Y',1:n_items))
 }
+
 
 
 ############################################################
@@ -133,15 +135,70 @@ blimp_model <- rblimp(
 # Fit multigroup version with Lavaan
 ############################################################
 
-model <- '
-  X =~ X1 + X2 + X3 + X4 + X5 + X6
+if(n_items == 6){
+  model <- '
+  X1 ~ 0*1
+  X2 ~ 0*1
+  X3 ~ 0*1
+  X4 ~ 0*1
+  X5 ~ 0*1
+  X6 ~ 0*1
+  
+  Y1 ~ 0*1
+  Y2 ~ 0*1
+  Y3 ~ 0*1
+  Y4 ~ 0*1
+  Y5 ~ 0*1
+  Y6 ~ 0*1
+  
+  X =~  X1 + X2 + X3 + X4 + X5 + X6
   Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6
-
+  
+  X ~ 0*1
+  Y ~ 1
   Y ~ X   
 '
-fit <- sem(model, data = dat, group = "G", group.equal = "loadings", std.lv = TRUE)
+} else if(n_items == 12){
+  model <- '
+  X1 ~ 0*1
+  X2 ~ 0*1
+  X3 ~ 0*1
+  X4 ~ 0*1
+  X5 ~ 0*1
+  X6 ~ 0*1
+  X7 ~ 0*1
+  X8 ~ 0*1
+  X9 ~ 0*1
+  X10 ~ 0*1
+  X11 ~ 0*1
+  X12 ~ 0*1
+  
+  Y1 ~ 0*1
+  Y2 ~ 0*1
+  Y3 ~ 0*1
+  Y4 ~ 0*1
+  Y5 ~ 0*1
+  Y6 ~ 0*1
+  Y7 ~ 0*1
+  Y8 ~ 0*1
+  Y9 ~ 0*1
+  Y10 ~ 0*1
+  Y11 ~ 0*1
+  Y12 ~ 0*1
+  
+  X =~ X1 + X2 + X3 + X4 + X5 + X6 + X7 + X8 + X9 + X10 + X11 + X12
+  Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6 + Y7 + Y8 + Y9 + Y10 + Y11 + Y12
+  
+  X ~ 0*1
+  Y ~ 1
+  Y ~ X   
+'
+}
 
+fit <- sem(model, data = dat, group = "G", group.equal = c("loadings","intercepts"), 
+           std.lv = TRUE)
 summary(fit)
+
 
 
 ############################################################
@@ -164,12 +221,12 @@ sum_model <- summary(lm(Y_sum ~ G + X_sum + G*X_sum, data = dat))
 if (bin == F){
   results <- as.data.frame(matrix(999, nrow = 7, ncol = 15))
   param.id <- c("beta_0","beta_G2","beta_G3","beta_X","beta_XG2","beta_XG3","res.var")
-  mod.est <- as.numeric(c(blimp_model@estimates[2:7,1],blimp_model@estimates[1,1]))
+  blimp.est <- as.numeric(c(blimp_model@estimates[2:7,1],blimp_model@estimates[1,1]))
   
 } else {
   results <- as.data.frame(matrix(999, nrow = 5, ncol = 15))
   param.id <- c("beta_0","beta_G2","beta_X","beta_XG2","res.var")
-  mod.est <- as.numeric(c(blimp_model@estimates[2:5,1],blimp_model@estimates[1,1]))
+  blimp.est <- as.numeric(c(blimp_model@estimates[2:5,1],blimp_model@estimates[1,1]))
   
 }
 
@@ -194,7 +251,7 @@ results[,5] <- loading
 results[,6] <- n_items
 results[,7] <- 1            # 1 = moderation parameters
 results[,8] <- param.id
-results[,9] <- mod.est
+results[,9] <- blimp.est
 results[,10] <- as.numeric(mod_parameters)
 results[,11] <- results[,9] - results[,10]
 results[,12] <- results[,11]/results[,10]
