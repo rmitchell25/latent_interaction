@@ -111,14 +111,15 @@ if (bin == F){
 # Fit in Blimp and save results
 ############################################################
 
-blimp_model <- rblimp(
-  data = dat,
-  burn = 10000,
-  iter = 10000,
-  seed = 91030,
-  nominal = 'G',
-  latent = 'X_eta Y',
-  model = '
+if(n_items == 6){
+  blimp_model <- rblimp(
+    data = dat,
+    burn = 10000,
+    iter = 10000,
+    seed = 91030,
+    nominal = 'G',
+    latent = 'X_eta Y',
+    model = '
   structural:
   Y ~ 1 G X_eta G*X_eta;
   measurement:
@@ -127,8 +128,29 @@ blimp_model <- rblimp(
   Y -> Y1@1 Y2:Y6;
   predictors:
   G ~ X_eta',
-  parameters = 'lo1 ~ trunc(0,inf)'
-)
+    parameters = 'lo1 ~ trunc(0,inf)'
+  )
+}else if(n_items == 12){
+  blimp_model <- rblimp(
+    data = dat,
+    burn = 10000,
+    iter = 10000,
+    seed = 91030,
+    nominal = 'G',
+    latent = 'X_eta Y',
+    model = '
+  structural:
+  Y ~ 1 G X_eta G*X_eta;
+  measurement:
+  X_eta ~~ X_eta@1;
+  X_eta -> X1@lo1 X2:X12;
+  Y -> Y1@1 Y2:Y12;
+  predictors:
+  G ~ X_eta',
+    parameters = 'lo1 ~ trunc(0,inf)'
+  )
+}
+
 
 
 ############################################################
@@ -154,7 +176,7 @@ if(n_items == 6){
   X =~  X1 + X2 + X3 + X4 + X5 + X6
   Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6
   
-  X ~ 0*1
+  X ~ 1 
   Y ~ 1
   Y ~ X   
 '
@@ -189,15 +211,16 @@ if(n_items == 6){
   X =~ X1 + X2 + X3 + X4 + X5 + X6 + X7 + X8 + X9 + X10 + X11 + X12
   Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6 + Y7 + Y8 + Y9 + Y10 + Y11 + Y12
   
-  X ~ 0*1
+  X ~ 1 
   Y ~ 1
   Y ~ X   
 '
 }
 
-fit <- sem(model, data = dat, group = "G", group.equal = c("loadings","intercepts"), 
+fit <- sem(model, data = dat, group = "G", 
+           group.equal = c("intercepts","loadings", "residuals"), 
            std.lv = TRUE)
-summary(fit)
+# summary(fit)
 
 
 
