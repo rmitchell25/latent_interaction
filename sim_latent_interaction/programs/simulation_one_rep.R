@@ -1,3 +1,5 @@
+# Load packages ----
+
 library(mvtnorm) 
 library(dplyr) 
 library(lavaan)
@@ -24,8 +26,8 @@ if(runfromshell){
   seed <- as.numeric(runvars[11])
 }else{
   runoncluster <- 0
-  # dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
-  dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
+  dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
+  # dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
   filename<- "g1prod03N350load5item6"
   
   cat <- 2
@@ -42,9 +44,8 @@ if(runfromshell){
 if(runoncluster == 1){setwd(dirname)} else if(runoncluster == 0){setwd(paste0(dirname))}
 
 
-############################################################
-# Select group probabilities based on category condition
-############################################################
+
+# Select group probabilities based on category condition ----
 
 group_probs3 <- rbind(c(.34, .33, .33),
                       c(.40, .40, .20),
@@ -61,9 +62,8 @@ if(cat == 2){
 }
 
 
-############################################################
-# Pull population parameters
-############################################################
+
+# Pull population parameters ----
 
 # Load parameters file
 load(file = paste0(dirname,"/misc/parameter_values.rda"))
@@ -87,9 +87,7 @@ sum_score_params <- parameter_values[[name]]$sum_score_parameters
 
 
 
-############################################################
-# Generate data
-############################################################
+# Generate data ----
 
 ng <- N * probs
 
@@ -107,55 +105,34 @@ if (bin == F){
 
 
 
-############################################################
-# Fit in Blimp and save results
-############################################################
+# Fit in Blimp and save results ----
 
-if(n_items == 6){
-  blimp_model <- rblimp(
-    data = dat,
-    burn = 10000,
-    iter = 10000,
-    seed = 91030,
-    nominal = 'G',
-    latent = 'X_eta Y',
-    model = '
-  structural:
-  Y ~ 1 G X_eta G*X_eta;
-  measurement:
-  X_eta ~~ X_eta@1;
-  X_eta -> X1@lo1 X2:X6;
-  Y -> Y1@1 Y2:Y6;
-  predictors:
-  G ~ X_eta',
-    parameters = 'lo1 ~ trunc(0,inf)'
-  )
-}else if(n_items == 12){
-  blimp_model <- rblimp(
-    data = dat,
-    burn = 10000,
-    iter = 10000,
-    seed = 91030,
-    nominal = 'G',
-    latent = 'X_eta Y',
-    model = '
-  structural:
-  Y ~ 1 G X_eta G*X_eta;
-  measurement:
-  X_eta ~~ X_eta@1;
-  X_eta -> X1@lo1 X2:X12;
-  Y -> Y1@1 Y2:Y12;
-  predictors:
-  G ~ X_eta',
-    parameters = 'lo1 ~ trunc(0,inf)'
-  )
-}
+syntax <- list(
+  structural_model = c('Y ~ 1 G X G*X'),
+  X_measurement = c('X ~~ X@1',
+                   paste0('X -> X1@lx1 X2:X', n_items, collapse = '')),
+  Y_measurement = c(paste0('Y -> Y1:Y', n_items, collapse = ''),
+                  'Y1 ~ 1@0'),
+  predictors = c('X ~ 1@0',
+                  'G ~ X')
+)
+
+blimp_model <- rblimp(
+  data = dat,
+  latent = 'X Y',
+  nominal = 'G',
+  model = syntax,
+  simple = 'X | G',
+  seed = seed,
+  burn = 10000,
+  iter = 10000
+)
+output(blimp_model)
 
 
 
-############################################################
-# Fit multigroup version with Lavaan
-############################################################
+
+# Fit multigroup version with Lavaan ---- 
 
 if(n_items == 6){
   model <- '
@@ -224,9 +201,7 @@ fit <- sem(model, data = dat, group = "G",
 
 
 
-############################################################
-# Fit version with sum score
-############################################################
+# Fit version with sum score ----
 
 # add sum scores to data set
 X_sum <- dat %>% select(starts_with("X")) %>% rowSums()
@@ -237,9 +212,8 @@ dat <- cbind(dat, X_sum, Y_sum)
 sum_model <- summary(lm(Y_sum ~ G + X_sum + G*X_sum, data = dat))
 
 
-############################################################
-# Results: Power, Type 2 Error, Relative Bias, MSE, CI Coverage
-############################################################
+
+# Results: Power, Type 2 Error, Relative Bias, MSE, CI Coverage ----
 
 if (bin == F){
   results <- as.data.frame(matrix(999, nrow = 7, ncol = 15))
