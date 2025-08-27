@@ -34,38 +34,13 @@ solve_factor_means <- function(probs, target_corr = corr_Xs, binary = F) {
     
     stopifnot(abs(p1 + p2 - 1) < 1e-6)
     
-    # Define objective function to minimize the deviation from target correlation
-    objective <- function(mu2) {
-      mu1 <- 0  # fix group 1 mean to zero
-      mu_bar <- p1 * mu1 + p2 * mu2  # expected value of X (should be 0)
-      
-      # Between-group variance
-      var_between <- p1 * (mu1 - mu_bar)^2 + p2 * (mu2 - mu_bar)^2
-      var_within <- 1 - var_between  # to keep total variance of X at 1
-      var_X <- var_between + var_within  # should be ~1
-      
-      # Covariance between X and G2 dummy code
-      cov_X_G2 <- p2 * (mu2 - mu_bar)
-      
-      # Variance of G2 dummy variable
-      var_G2 <- p2 * (1 - p2)
-      
-      # Compute actual correlation
-      corr_G2 <- cov_X_G2 / sqrt(var_X * var_G2)
-      
-      # Return squared error from target
-      return((corr_G2 - target_corr)^2)
-    }
-    
-    # Optimize over a reasonable range
-    opt <- optimize(objective, interval = c(-3, 3))
-    
-    mu1 <- 0
-    mu2 <- opt$minimum
+    # Closed-form solutions from derivation
+    mu1 <- target_corr * sqrt(p2 / p1)
+    mu2 <- -target_corr * sqrt(p1 / p2)
     
     return(c(mu1 = mu1, mu2 = mu2))
     
-  } else{
+    } else{
     p1 <- probs[1]
     p2 <- probs[2]
     p3 <- probs[3]

@@ -136,26 +136,14 @@ output(blimp_model)
 
 if(n_items == 6){
   model <- '
-  X1 ~ 0*1
-  X2 ~ 0*1
-  X3 ~ 0*1
-  X4 ~ 0*1
-  X5 ~ 0*1
-  X6 ~ 0*1
+  X1 ~ c(int1, int1)
   
-  Y1 ~ 0*1
-  Y2 ~ 0*1
-  Y3 ~ 0*1
-  Y4 ~ 0*1
-  Y5 ~ 0*1
-  Y6 ~ 0*1
-  
-  X =~  X1 + X2 + X3 + X4 + X5 + X6
+  X =~ X1 + X2 + X3 + X4 + X5 + X6
+
   Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6
-  
-  X ~ 1 
-  Y ~ 1
-  Y ~ X   
+
+  X ~ 1
+  Y ~ c(intY, intY)*1 + X
 '
 } else if(n_items == 12){
   model <- '
@@ -195,7 +183,7 @@ if(n_items == 6){
 }
 
 fit <- sem(model, data = dat, group = "G", 
-           group.equal = c("intercepts","loadings", "residuals"), 
+           group.equal = c("loadings", "residuals"),
            std.lv = TRUE)
 # summary(fit)
 
