@@ -30,9 +30,9 @@ if(runfromshell){
   # dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
   filename<- "g1prod03N350load5item6"
   
-  cat <- 2
+  cat <- 3
   group_prob <- 1  # 1:3
-  rsq_prod <- 0.03    # 0, 0.03, 0.07
+  rsq_prod <- 0.07    # 0, 0.03, 0.07
   N <- 350      # seq(100,400, by = 50), 500, 1000
   loading <- .5   # .5 or .8
   n_items <- 6    # 6 or 12
@@ -134,16 +134,25 @@ output(blimp_model)
 
 # Fit multigroup version with Lavaan ---- 
 
-if(n_items == 6){
-  model <- '
-  X1 ~ c(int1, int1)
+if(n_items == 6 ){
   
-  X =~ X1 + X2 + X3 + X4 + X5 + X6
-
+  #three group version  
+  model <- '
+  Y1 ~ 0*1
+  X1 ~ 0*1
+  
+  X =~ NA*X1 + X2 + X3 + X4 + X5 + X6
   Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6
 
-  X ~ 1
-  Y ~ c(intY, intY)*1 + X
+  X ~ c(0,intX2,intX3)*1
+  
+  Y ~ c(intY, intY, intY)*1 + c(slope1, slope2, slope3)*X
+  
+  X ~~ c(varX,varX,varX)*X
+  Y ~~ c(varY,varY,varY)*Y
+  
+  interaction1 := slope2 - slope1
+  interaction2 := slope3 - slope1
 '
 } else if(n_items == 12){
   model <- '
@@ -183,9 +192,8 @@ if(n_items == 6){
 }
 
 fit <- sem(model, data = dat, group = "G", 
-           group.equal = c("loadings", "residuals"),
-           std.lv = TRUE)
-# summary(fit)
+           group.equal = c("loadings", "residuals","intercepts"))
+summary(fit)
 
 
 
