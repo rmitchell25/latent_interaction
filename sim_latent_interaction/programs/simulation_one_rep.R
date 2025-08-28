@@ -134,66 +134,105 @@ output(blimp_model)
 
 # Fit multigroup version with Lavaan ---- 
 
-if(n_items == 6 ){
+if(n_items == 6){
+  if(bin == T){
+    model <- '
+      # structural X
+      X ~ c(0,intX2)*1      # fix the first latent meam to 0 and free the other
+      X ~~ 1*X              # set within-group variance to 1 (equal across groups)
+      
+      # structural Y
+      Y ~ c(intY1,intY2)*1 + c(slope1, slope2)*X  # group-specific intercepts map to dummy code effects
+      Y ~~ c(resvarY,resvarY)*Y                   # pooled residual variance
+      
+      # measurement: loadings & intercepts equal across groups
+      X =~ NA*X1 + X2 + X3 + X4 + X5 + X6   # free first loading because var(Xw) = 1
+      Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6      # fix first loading because var(Y) is estimated
+      
+      # conversions to MR parameters
+      B0 := intY1
+      G_slope := intY2 - intY1
+      X_slope := slope1
+      GbyX_slope := slope2 - slope1
+      Y_resvar := resvarY
+    '
+  } else {
+    model <- '
+      # structural X
+      X ~ c(0,intX2,intX3)*1      # fix the first latent meam to 0 and free the others
+      X ~~ 1*X                    # set within-group variance to 1
+      
+      # structural Y
+      Y ~ c(intY1,intY2,intY3)*1 + c(slope1, slope2, slope3)*X    # group-specific intercepts map to the dummy code effects
+      Y ~~ c(resvarY,resvarY,resvarY)*Y                           # pooled residual variance
+      
+      # measurement models: all intercepts and residual variances estimated with equality constraints across groups
+      X =~ NA*X1 + X2 + X3 + X4 + X5 + X6          # free first loading because var(Xw) = 1
+      Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6             # fix first loading because var(Y) is estimated
+    
+      B0 := intY1
+      G2_slope := intY2 - intY1
+      G3_slope := intY3 - intY1
+      X_slope := slope1
+      G2byX_slope := slope2 - slope1
+      G3byX_slope := slope3 - slope1
+      Y_resvar := resvarY
+    '
+  }
   
-  #three group version  
-  model <- '
-  Y1 ~ 0*1
-  X1 ~ 0*1
-  
-  X =~ NA*X1 + X2 + X3 + X4 + X5 + X6
-  Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6
-
-  X ~ c(0,intX2,intX3)*1
-  
-  Y ~ c(intY, intY, intY)*1 + c(slope1, slope2, slope3)*X
-  
-  X ~~ c(varX,varX,varX)*X
-  Y ~~ c(varY,varY,varY)*Y
-  
-  interaction1 := slope2 - slope1
-  interaction2 := slope3 - slope1
-'
 } else if(n_items == 12){
-  model <- '
-  X1 ~ 0*1
-  X2 ~ 0*1
-  X3 ~ 0*1
-  X4 ~ 0*1
-  X5 ~ 0*1
-  X6 ~ 0*1
-  X7 ~ 0*1
-  X8 ~ 0*1
-  X9 ~ 0*1
-  X10 ~ 0*1
-  X11 ~ 0*1
-  X12 ~ 0*1
-  
-  Y1 ~ 0*1
-  Y2 ~ 0*1
-  Y3 ~ 0*1
-  Y4 ~ 0*1
-  Y5 ~ 0*1
-  Y6 ~ 0*1
-  Y7 ~ 0*1
-  Y8 ~ 0*1
-  Y9 ~ 0*1
-  Y10 ~ 0*1
-  Y11 ~ 0*1
-  Y12 ~ 0*1
-  
-  X =~ X1 + X2 + X3 + X4 + X5 + X6 + X7 + X8 + X9 + X10 + X11 + X12
-  Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6 + Y7 + Y8 + Y9 + Y10 + Y11 + Y12
-  
-  X ~ 1 
-  Y ~ 1
-  Y ~ X   
-'
+  if(bin == T){
+    model <- '
+      # structural X
+      X ~ c(0,intX2)*1      # fix the first latent meam to 0 and free the other
+      X ~~ 1*X              # set within-group variance to 1 (equal across groups)
+      
+      # structural Y
+      Y ~ c(intY1,intY2)*1 + c(slope1, slope2)*X  # group-specific intercepts map to dummy code effects
+      Y ~~ c(resvarY,resvarY)*Y                   # pooled residual variance
+      
+      # measurement: loadings & intercepts equal across groups
+      X =~ NA*X1 + X2 + X3 + X4 + X5 + X6 + X7 + X8 + X9 + X10 + X11 + X12
+      Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6 + Y7 + Y8 + Y9 + Y10 + Y11 + Y12 
+      
+      # conversions to MR parameters
+      B0 := intY1
+      G_slope := intY2 - intY1
+      X_slope := slope1
+      GbyX_slope := slope2 - slope1
+      Y_resvar := resvarY
+    '
+  } else {
+    model <- '
+      # structural X
+      X ~ c(0,intX2,intX3)*1  
+      X ~~ 1*X                    
+      
+      # structural Y
+      Y ~ c(intY1,intY2,intY3)*1 + c(slope1, slope2, slope3)*X
+      Y ~~ c(resvarY,resvarY,resvarY)*Y                 
+      
+      # measurement models: all intercepts and residual variances estimated with equality constraints across groups
+      X =~ NA*X1 + X2 + X3 + X4 + X5 + X6 + X7 + X8 + X9 + X10 + X11 + X12
+      Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6 + Y7 + Y8 + Y9 + Y10 + Y11 + Y12      
+    
+      B0 := intY1
+      G2_slope := intY2 - intY1
+      G3_slope := intY3 - intY1
+      X_slope := slope1
+      G2byX_slope := slope2 - slope1
+      G3byX_slope := slope3 - slope1
+      Y_resvar := resvarY
+    '
+  }
 }
 
-fit <- sem(model, data = dat, group = "G", 
+# fit multiple group model
+fit <- sem(model, data = dat, group = "G",
            group.equal = c("loadings", "residuals","intercepts"))
-summary(fit)
+
+# summarize
+# summary(fit, standardized = T)
 
 
 
