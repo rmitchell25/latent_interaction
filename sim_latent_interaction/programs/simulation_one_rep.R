@@ -26,11 +26,11 @@ if(runfromshell){
   seed <- as.numeric(runvars[11])
 }else{
   runoncluster <- 0
-  dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
-  # dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
+  # dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
+  dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
   filename<- "g1prod03N350load5item6"
   
-  cat <- 3
+  cat <- 2
   group_prob <- 1  # 1:3
   rsq_prod <- 0.07    # 0, 0.03, 0.07
   N <- 350      # seq(100,400, by = 50), 500, 1000
@@ -89,7 +89,7 @@ sum_score_params <- parameter_values[[name]]$sum_score_parameters
 
 # Generate data ----
 
-ng <- N * probs
+ng <- round(N * probs)
 
 g1dat <- cbind(1,rmvnorm(ng[1], as.vector(moments_G1$mean), as.matrix(moments_G1$covariance)))
 g2dat <- cbind(2,rmvnorm(ng[2], as.vector(moments_G2$mean), as.matrix(moments_G2$covariance)))
