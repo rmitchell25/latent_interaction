@@ -26,14 +26,14 @@ if(runfromshell){
   seed <- as.numeric(runvars[11])
 }else{
   runoncluster <- 0
-  # dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
-  dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
+  dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
+  # dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
   filename<- "g1prod03N350load5item6"
   
-  cat <- 2
+  cat <- 3
   group_prob <- 1  # 1:3
   rsq_prod <- 0.07    # 0, 0.03, 0.07
-  N <- 350      # seq(100,400, by = 50), 500, 1000
+  N <- 10000      # seq(100,400, by = 50), 500, 1000
   loading <- .5   # .5 or .8
   n_items <- 6    # 6 or 12
   rep <- 1
@@ -127,7 +127,7 @@ blimp_model <- rblimp(
   burn = 10000,
   iter = 10000
 )
-output(blimp_model)
+# output(blimp_model)
 
 
 
@@ -137,93 +137,98 @@ output(blimp_model)
 if(n_items == 6){
   if(bin == T){
     model <- '
-      # structural X
-      X ~ c(0,intX2)*1      # fix the first latent meam to 0 and free the other
-      X ~~ 1*X              # set within-group variance to 1 (equal across groups)
-      
-      # structural Y
-      Y ~ c(intY1,intY2)*1 + c(slope1, slope2)*X  # group-specific intercepts map to dummy code effects
-      Y ~~ c(resvarY,resvarY)*Y                   # pooled residual variance
-      
-      # measurement: loadings & intercepts equal across groups
-      X =~ NA*X1 + X2 + X3 + X4 + X5 + X6   # free first loading because var(Xw) = 1
-      Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6      # fix first loading because var(Y) is estimated
-      
-      # conversions to MR parameters
-      B0 := intY1
-      G_slope := intY2 - intY1
-      X_slope := slope1
-      GbyX_slope := slope2 - slope1
-      Y_resvar := resvarY
-    '
+        # structural X
+        X ~ c(0,intX2)*1      # fix the first latent mean to 0 and free the other
+        X ~~ 1*X              # set within-group variance to 1 (equal across groups)
+        
+        # structural Y
+        Y ~ c(intY1,intY2)*1 + c(slope1, slope2)*X  # group-specific intercepts map to dummy code effects
+        Y ~~ c(resvarY,resvarY)*Y                   # pooled residual variance
+        
+        # measurement: loadings & intercepts equal across groups
+        X =~ NA*X1 + X2 + X3 + X4 + X5 + X6   # free first loading because var(Xw) = 1
+        X1 ~ 0*1                                     # fix first intercept to 0
+        Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6      # fix first loading because var(Y) is estimated
+        Y1 ~ 0*1                              # fix first intercept to 0
+        
+        # conversions to MR parameters
+        B0 := intY1
+        G_slope := intY2 - intY1
+        X_slope := slope1
+        GbyX_slope := slope2 - slope1
+        Y_resvar := resvarY'
+    
   } else {
     model <- '
-      # structural X
-      X ~ c(0,intX2,intX3)*1      # fix the first latent meam to 0 and free the others
-      X ~~ 1*X                    # set within-group variance to 1
+        # structural X
+        X ~ c(0,intX2,intX3)*1      # fix the first latent meam to 0 and free the others
+        X ~~ 1*X                    # set within-group variance to 1
+        
+        # structural Y
+        Y ~ c(intY1,intY2,intY3)*1 + c(slope1, slope2, slope3)*X    # group-specific intercepts map to the dummy code effects
+        Y ~~ c(resvarY,resvarY,resvarY)*Y                           # pooled residual variance
+        
+        # measurement models: all intercepts and residual variances estimated with equality constraints across groups
+        X =~ NA*X1 + X2 + X3 + X4 + X5 + X6          # free first loading because var(Xw) = 1
+        X1 ~ 0*1                                     # fix first intercept to 0
+        Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6             # fix first loading because var(Y) is estimated
+        Y1 ~ 0*1                                     # fix first intercept to 0
       
-      # structural Y
-      Y ~ c(intY1,intY2,intY3)*1 + c(slope1, slope2, slope3)*X    # group-specific intercepts map to the dummy code effects
-      Y ~~ c(resvarY,resvarY,resvarY)*Y                           # pooled residual variance
-      
-      # measurement models: all intercepts and residual variances estimated with equality constraints across groups
-      X =~ NA*X1 + X2 + X3 + X4 + X5 + X6          # free first loading because var(Xw) = 1
-      Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6             # fix first loading because var(Y) is estimated
-    
-      B0 := intY1
-      G2_slope := intY2 - intY1
-      G3_slope := intY3 - intY1
-      X_slope := slope1
-      G2byX_slope := slope2 - slope1
-      G3byX_slope := slope3 - slope1
-      Y_resvar := resvarY
-    '
+        B0 := intY1
+        G2_slope := intY2 - intY1
+        G3_slope := intY3 - intY1
+        X_slope := slope1
+        G2byX_slope := slope2 - slope1
+        G3byX_slope := slope3 - slope1
+        Y_resvar := resvarY' 
   }
   
 } else if(n_items == 12){
   if(bin == T){
     model <- '
-      # structural X
-      X ~ c(0,intX2)*1      # fix the first latent meam to 0 and free the other
-      X ~~ 1*X              # set within-group variance to 1 (equal across groups)
-      
-      # structural Y
-      Y ~ c(intY1,intY2)*1 + c(slope1, slope2)*X  # group-specific intercepts map to dummy code effects
-      Y ~~ c(resvarY,resvarY)*Y                   # pooled residual variance
-      
-      # measurement: loadings & intercepts equal across groups
-      X =~ NA*X1 + X2 + X3 + X4 + X5 + X6 + X7 + X8 + X9 + X10 + X11 + X12
-      Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6 + Y7 + Y8 + Y9 + Y10 + Y11 + Y12 
-      
-      # conversions to MR parameters
-      B0 := intY1
-      G_slope := intY2 - intY1
-      X_slope := slope1
-      GbyX_slope := slope2 - slope1
-      Y_resvar := resvarY
-    '
+        # structural X
+        X ~ c(0,intX2)*1
+        X ~~ 1*X 
+        
+        # structural Y
+        Y ~ c(intY1,intY2)*1 + c(slope1, slope2)*X
+        Y ~~ c(resvarY,resvarY)*Y   
+        
+        # measurement: loadings & intercepts equal across groups
+        X =~ NA*X1 + X2 + X3 + X4 + X5 + X6 + X7 + X8 + X9 + X10 + X11 + X12
+        X1 ~ 0*1      
+        Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6 + Y7 + Y8 + Y9 + Y10 + Y11 + Y12
+        Y1 ~ 0*1                             
+        
+        # conversions to MR parameters
+        B0 := intY1
+        G_slope := intY2 - intY1
+        X_slope := slope1
+        GbyX_slope := slope2 - slope1
+        Y_resvar := resvarY'
   } else {
     model <- '
-      # structural X
-      X ~ c(0,intX2,intX3)*1  
-      X ~~ 1*X                    
+        # structural X
+        X ~ c(0,intX2,intX3)*1    
+        X ~~ 1*X  
+        
+        # structural Y
+        Y ~ c(intY1,intY2,intY3)*1 + c(slope1, slope2, slope3)*X  
+        Y ~~ c(resvarY,resvarY,resvarY)*Y 
+        
+        # measurement models: all intercepts and residual variances estimated with equality constraints across groups
+        X =~ NA*X1 + X2 + X3 + X4 + X5 + X6 + X7 + X8 + X9 + X10 + X11 + X12 
+        X1 ~ 0*1   
+        Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6 + Y7 + Y8 + Y9 + Y10 + Y11 + Y12   
+        Y1 ~ 0*1                     
       
-      # structural Y
-      Y ~ c(intY1,intY2,intY3)*1 + c(slope1, slope2, slope3)*X
-      Y ~~ c(resvarY,resvarY,resvarY)*Y                 
-      
-      # measurement models: all intercepts and residual variances estimated with equality constraints across groups
-      X =~ NA*X1 + X2 + X3 + X4 + X5 + X6 + X7 + X8 + X9 + X10 + X11 + X12
-      Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6 + Y7 + Y8 + Y9 + Y10 + Y11 + Y12      
-    
-      B0 := intY1
-      G2_slope := intY2 - intY1
-      G3_slope := intY3 - intY1
-      X_slope := slope1
-      G2byX_slope := slope2 - slope1
-      G3byX_slope := slope3 - slope1
-      Y_resvar := resvarY
-    '
+        B0 := intY1
+        G2_slope := intY2 - intY1
+        G3_slope := intY3 - intY1
+        X_slope := slope1
+        G2byX_slope := slope2 - slope1
+        G3byX_slope := slope3 - slope1
+        Y_resvar := resvarY' 
   }
 }
 
@@ -232,7 +237,10 @@ fit <- sem(model, data = dat, group = "G",
            group.equal = c("loadings", "residuals","intercepts"))
 
 # summarize
-# summary(fit, standardized = T)
+mg_model <-  summary(fit, standardized = T)
+mg_est <- parameterEstimates(fit, ci = TRUE, level = 0.95)
+
+
 
 
 
@@ -244,55 +252,81 @@ Y_sum <- dat %>% select(starts_with("Y")) %>% rowSums()
 dat <- cbind(dat, X_sum, Y_sum)
 
 # run analysis
-sum_model <- summary(lm(Y_sum ~ G + X_sum + G*X_sum, data = dat))
+sum_score_model <- lm(Y_sum ~ factor(G) + X_sum + factor(G)*X_sum, data = dat)
+sum_model <- summary(lm(Y_sum ~ factor(G) + X_sum + factor(G)*X_sum, data = dat))
+
+
+
 
 
 
 # Results: Power, Type 2 Error, Relative Bias, MSE, CI Coverage ----
 
+# Set up data frame differently based on number of categories
 if (bin == F){
-  results <- as.data.frame(matrix(999, nrow = 7, ncol = 15))
+  results <- as.data.frame(matrix(999, nrow = 21, ncol = 16))
   param.id <- c("beta_0","beta_G2","beta_G3","beta_X","beta_XG2","beta_XG3","res.var")
-  blimp.est <- as.numeric(c(blimp_model@estimates[2:7,1],blimp_model@estimates[1,1]))
-  
 } else {
-  results <- as.data.frame(matrix(999, nrow = 5, ncol = 15))
+  results <- as.data.frame(matrix(999, nrow = 15, ncol = 16))
   param.id <- c("beta_0","beta_G2","beta_X","beta_XG2","res.var")
-  blimp.est <- as.numeric(c(blimp_model@estimates[2:5,1],blimp_model@estimates[1,1]))
-  
 }
+colnames(results) <- c("categories", "group_prob", "rsq_prod", "N", "loading", 
+                       "n_items", "model_type", "param.id", "est", "true", 
+                       "bias", "rel.bias", "squared_bias","pval", "sig", "ci.cov")
 
-
-# Moderation Significance and CI Coverage
-pvalues1 <- as.numeric(c(blimp_model@estimates[2:nrow(results),6],blimp_model@estimates[1,6]))
-sig_mod<- rep(0,nrow(results))
-sig_mod[pvalues1 < .05]<-1
-
-CI_lower <- as.numeric(c(blimp_model@estimates[2:nrow(results),3],blimp_model@estimates[1,3]))
-CI_upper <- as.numeric(c(blimp_model@estimates[2:nrow(results),4],blimp_model@estimates[1,4]))
-CI_cov_mod<- rep(0,nrow(results))
-CI_cov_mod[CI_lower < as.numeric(mod_parameters) & CI_upper > as.numeric(mod_parameters)] <-1
-
-
-# Save results
+# Save info on set of conditions
 results[,1] <- cat
 results[,2] <- group_prob
 results[,3] <- rsq_prod
 results[,4] <- N
 results[,5] <- loading
 results[,6] <- n_items
-results[,7] <- 1            # 1 = moderation parameters
-results[,8] <- param.id
-results[,9] <- blimp.est
-results[,10] <- as.numeric(mod_parameters)
+results[,7] <- c(rep(1,(nrow(results)/3)),rep(2,(nrow(results)/3)),rep(3,(nrow(results)/3)))         
+results[,8] <- rep(param.id,3)
+
+
+# Save estimates and calculate bias
+blimp.est <- as.numeric(c(blimp_model@estimates[2:(nrow(results)/3),1],blimp_model@estimates[1,1]))
+mg.est <- as.numeric(mg_model[["pe"]][["est"]][(((length(mg_model[["pe"]][["est"]])+1)-(nrow(results)/3))):length(mg_model[["pe"]][["est"]])])
+sum.est <- as.numeric(c(sum_model[["coefficients"]][,4], sum_model[["sigma"]]^2))
+results[,9] <- c(blimp.est, mg.est, sum.est)
+results[,10] <- c(rep(as.numeric(mod_parameters),2),as.numeric(sum_score_params))
+
 results[,11] <- results[,9] - results[,10]
 results[,12] <- results[,11]/results[,10]
 results[,13] <- results[,11]^2
-results[,14] <- sig_mod
-results[,15] <- CI_cov_mod
+
+
+# P-values and Significance
+pvalues_blimp <- as.numeric(c(blimp_model@estimates[2:(nrow(results)/3),6], blimp_model@estimates[1,6]))
+pvalues_mg <- as.numeric(mg_model[["pe"]][["pvalue"]][(((length(mg_model[["pe"]][["pvalue"]])+1)-(nrow(results)/3))):length(mg_model[["pe"]][["pvalue"]])])
+pvalues_sum <- as.numeric(c(sum_model[["coefficients"]][,4], NA))
+pvals <- c(pvalues_blimp, pvalues_mg, pvalues_sum)
+
+sig_mod<- rep(0,nrow(results))
+sig_mod[pvals < .05]<-1
+
+results[,14] <- pvals
+results[,15] <- sig_mod
+
+
+# CI Coverage
+CIL_blimp <- as.numeric(c(blimp_model@estimates[2:(nrow(results)/3),3],blimp_model@estimates[1,3]))
+CIU_blimp <- as.numeric(c(blimp_model@estimates[2:(nrow(results)/3),4],blimp_model@estimates[1,4]))
+CIL_mg <- as.numeric(mg_est[(1 + nrow(mg_est) - (nrow(results)/3)):nrow(mg_est),11])
+CIU_mg <- as.numeric(mg_est[(1 + nrow(mg_est) - (nrow(results)/3)):nrow(mg_est),12])
+CIL_sum <- as.numeric(c(confint(sum_score_model, level = 0.95)[,1],NA))
+CIU_sum <- as.numeric(c(confint(sum_score_model, level = 0.95)[,2],NA))
+
+CI_lower <- c(CIL_blimp ,CIL_mg, CIL_sum)
+CI_upper <- c(CIU_blimp, CIU_mg, CIU_sum)
+
+CI_cov <- rep(0,nrow(results))
+CI_cov[CI_lower < as.numeric(results[,9]) & CI_upper > as.numeric(results[,9])] <-1
+
+results[,16] <- CI_cov
+
   
-colnames(results) <- c("categories", "group_prob", "rsq_prod", "N", "loading", 
-                       "n_items", "model_type", "param.id", "mod_est", "true_mod", 
-                       "bias", "rel.bias", "squared_bias", "sig", "ci.cov")
+
 write.table(results,paste0(dirname,'/results/',filename,'.dat'),row.names = F,col.names = F)
 
