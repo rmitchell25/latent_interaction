@@ -61,10 +61,10 @@ else
 	. /u/local/Modules/default/init/modules.sh
 	source /u/local/Modules/default/init/modules.sh #IDRE support said to add this line
 	module use /u/project/cenders/apps/modulefiles
-	module load gcc/7.5.0
+	module load gcc/10.2.0
 	module load blimp/3.2.3
 	module load nlopt
-	module load R
+	module load R/4.4.0
 
 fi
 # housekeeping: clean out folders before starting sim
