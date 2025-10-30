@@ -4,11 +4,10 @@
 #$ -j y
 #  Resources requested
 #$ -l h_data=10G,h_rt=3:00:00
-#$ -t 1-1000:1
+#$ -t 1-10:1
 
-#MULTIPLE=1
-#DIRNAME=/u/project/cenders/remusmit/sim_latent_interaction
-NUMREPS=1000
+
+NUMREPS=10
 
 cat=(2 3)
 groupprob=(1 2 3)
@@ -18,12 +17,13 @@ loading=(.5 .8)
 nitem=(6 12)
 
 # cluster specifications
-INTERACTIVE=0
+INTERACTIVE=1
 MULTIPLE=1
 
 if [ ${INTERACTIVE} = 1 ]
 	then
 		RUNONCLUSTER=1
+		CATLOOP=0
 		PROBLOOP=0
 		RSQLOOP=0
 		NLOOP=0
@@ -61,11 +61,10 @@ else
 	. /u/local/Modules/default/init/modules.sh
 	source /u/local/Modules/default/init/modules.sh #IDRE support said to add this line
 	module use /u/project/cenders/apps/modulefiles
-	module load blimp
+	module load gcc/10.2.0
+	module load blimp/3.2.3
 	module load nlopt
-	module load R/4.2.2
-	module load mplus
-	
+	module load R/4.4.0
 
 fi
 # housekeeping: clean out folders before starting sim
@@ -78,8 +77,8 @@ REPFIRST=${SGE_TASK_ID}
 REPLAST=$((${REPFIRST} + ${MULTIPLE}))
 
 # print start time to determine runtime
-echo "conditions: gprobs = ${PROBLOOP}, RSQ = ${RSQLOOP}, sample = ${NLOOP}, loading = ${LOADLOOP}" #>> ${MISCDIR}/time_log.txt
-echo "start time: " ` date ` #>> ${MISCDIR}/time_log.txt
+#echo "conditions: gprobs = ${PROBLOOP}, RSQ = ${RSQLOOP}, sample = ${NLOOP}, loading = ${LOADLOOP}" #>> ${MISCDIR}/time_log.txt
+#echo "start time: " ` date ` #>> ${MISCDIR}/time_log.txt
 
 
 
@@ -87,24 +86,24 @@ for (( REPLOOP = ${REPFIRST}; REPLOOP < ${REPLAST}; REPLOOP++ )); do
 
 	FILENAME=cat${CATLOOP}prob${PROBLOOP}rsq${RSQLOOP}N${NLOOP}load${LOADLOOP}item${ITEMLOOP}rep${REPLOOP}
 
-	SEEDLINECAT=$((${CATLOOP} *${#groupprob[@]} *${#rsq[@]} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} * ${NUMREPS}))
-	SEEDLINEPR=$((${PROBLOOP} * ${#rsq[@]} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} * ${NUMREPS}))
-	SEEDLINER=$((${RSQLOOP} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} * ${NUMREPS}))
-	SEEDLINEN=$((${NLOOP} * ${#loading[@]} * ${#nitem[@]} * ${NUMREPS}))
-	SEEDLINEL=$((${LOADLOOP} * ${#nitem[@]} * ${NUMREPS}))
-	SEEDLINENI=$((${ITEMLOOP} * ${NUMREPS}))
+	SEEDLINECAT=$((${CATLOOP} * ${#groupprob[@]} * ${#rsq[@]} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} + ${REPLOOP} + 1))
+	SEEDLINEPR=$((${PROBLOOP} * ${#rsq[@]} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} + ${REPLOOP}))
+	SEEDLINER=$((${RSQLOOP} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} + ${REPLOOP}))
+	SEEDLINEN=$((${NLOOP} * ${#loading[@]} * ${#nitem[@]} + ${REPLOOP}))
+	SEEDLINEL=$((${LOADLOOP} * ${#nitem[@]} + ${REPLOOP}))
+	SEEDLINENI=$((${ITEMLOOP} + ${REPLOOP}))
 	SEEDLINENUM=$((${SEEDLINECAT} + ${SEEDLINEPR} + ${SEEDLINER} + ${SEEDLINEN} + ${SEEDLINEL} + ${SEEDLINENI}))
+
 
 	SEED=$(sed -n "${SEEDLINENUM}p" "${MISCDIR}/seedlist.dat")
 
-	echo "Seed line number = ${SEEDLINENUM}; seed value = ${SEED}"
-
-
 	${RPATH} --no-save --slave --args ${RUNONCLUSTER} ${DIRNAME} ${FILENAME} ${cat[CATLOOP]} ${groupprob[PROBLOOP]} ${rsq[RSQLOOP]} ${sample[NLOOP]} ${loading[LOADLOOP]} ${nitem[ITEMLOOP]} ${REPLOOP} ${SEED} < ${PROGDIR}/simulation_one_rep.R
+
+	#echo "${RUNONCLUSTER} ${DIRNAME} ${cat[CATLOOP]} ${groupprob[PROBLOOP]} ${rsq[RSQLOOP]} ${sample[NLOOP]} ${loading[LOADLOOP]} ${nitem[ITEMLOOP]} ${REPLOOP} ${SEED}"
 
 done   
 
 # print end time to determine runtime
-echo "end time: " ` date ` #>> ${MISCDIR}/time_log.txt
+#echo "end time: " ` date ` #>> ${MISCDIR}/time_log.txt
 
 

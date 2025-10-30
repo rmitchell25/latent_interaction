@@ -40,7 +40,7 @@ solve_factor_means <- function(probs, target_corr = corr_Xs, binary = F) {
     
     return(c(mu1 = mu1, mu2 = mu2))
     
-    } else{
+  } else{
     p1 <- probs[1]
     p2 <- probs[2]
     p3 <- probs[3]
@@ -409,102 +409,50 @@ model_implied_moments <- function(mu_X, var_X, alpha, beta, residual_var_Y,
 
 
 ################################################################################
-# Step 6: Solve for Sum Score Parameters
+# Step 6: Create sum score moderation parameters 
 ################################################################################
 
-sum_score_parameter_group <- function(loading, n_X, n_Y, mu_X, probs,
-                                      rsq_baseline, rsq_product, binary = FALSE) {
+latent_to_sumscore_moderation <- function(beta_0, beta_G,beta_X,beta_XG,res.var,
+                                          n_items, lambda, VarX = 1, binary) {
   
-  mu_X  <- as.numeric(mu_X)
-  probs <- as.numeric(probs)
+  # Variances of Sum Scores
+  varX_sum <- (n_items * lambda)^2 * VarX + n_items * (1 - lambda^2)
   
-  # --------------------------------------------------------------------------
-  # 1. Compute observed variances of X_sum and Y_sum based on loadings + items
-  # --------------------------------------------------------------------------
-  # Var(sum) = n*1 + n(n-1)*lambda^2
-  var_X_sum <- n_X*1 + n_X*(n_X-1)*loading^2
-  var_Y_sum <- n_Y*1 + n_Y*(n_Y-1)*loading^2
+  slope_factor     <- (n_items * lambda) / varX_sum
+  intercept_factor <- (n_items * lambda)
   
-  # --------------------------------------------------------------------------
-  # 2. Baseline slope on sum-score scale
-  #    β = sqrt( R^2 * Var(Y_sum) / Var(X_sum) )
-  # --------------------------------------------------------------------------
-  beta_baseline <- sqrt((rsq_baseline * var_Y_sum) / var_X_sum)
+  # res.var on sum scale
+  res.var_sum <- (lambda * n_items)^2 * res.var + n_items * (1 - lambda^2)
   
-  # --------------------------------------------------------------------------
-  # 3. Optimize deltas to match target R^2 increase (rsq_product)
-  # --------------------------------------------------------------------------
-  if (binary) {
-    
-    objective <- function(delta2) {
-      deltas <- c(0, delta2)  
-      betas  <- beta_baseline + deltas
-      
-      # group-level predicted means
-      y_means <- betas * mu_X
-      mean_y  <- sum(probs * y_means)
-      
-      # explained variance of Y_sum
-      explained_var <- sum(probs * (betas^2 * var_X_sum + (y_means - mean_y)^2))
-      achieved_rsq  <- explained_var / var_Y_sum
-      
-      return((achieved_rsq - (rsq_baseline + rsq_product))^2)
-    }
-    
-    delta2_opt <- optimize(objective, interval = c(0, 5))$minimum
-    deltas <- c(0, delta2_opt)
-    betas  <- beta_baseline + deltas
-    
+  # scale interaction term
+  slope_factor_XG <- (n_items * lambda) / varX_sum
+  beta_XG_sum <- slope_factor_XG * beta_XG
+  
+  if(binary == T){
+    out <- list(
+      beta_0  = intercept_factor * beta_0,
+      beta_G2 = as.numeric(beta_G[1]),
+      beta_X  = slope_factor * beta_X,
+      beta_XG2 = beta_XG_sum,
+      res.var = res.var_sum
+    )
   } else {
-    
-    objective <- function(delta2) {
-      delta3 <- 2 * delta2
-      deltas <- c(0, delta2, delta3)
-      betas  <- beta_baseline + deltas
-      
-      y_means <- betas * mu_X
-      mean_y  <- sum(probs * y_means)
-      
-      explained_var <- sum(probs * (betas^2 * var_X_sum + (y_means - mean_y)^2))
-      achieved_rsq  <- explained_var / var_Y_sum
-      
-      return((achieved_rsq - (rsq_baseline + rsq_product))^2)
-    }
-    
-    delta2_opt <- optimize(objective, interval = c(0, 5))$minimum
-    delta3_opt <- 2 * delta2_opt
-    deltas <- c(0, delta2_opt, delta3_opt)
-    betas  <- beta_baseline + deltas
+    out <- list(
+      beta_0  = intercept_factor * beta_0,
+      beta_G2 = as.numeric(beta_G[1]),
+      beta_G3 = as.numeric(beta_G[2]),
+      beta_X  = slope_factor * beta_X,
+      beta_XG2 = as.numeric(beta_XG_sum[1]),
+      beta_XG3 = as.numeric(beta_XG_sum[2]),
+      res.var = res.var_sum
+    )
   }
-  
-  # --------------------------------------------------------------------------
-  # 4. Shared intercept to ensure E[Y] = 0
-  # --------------------------------------------------------------------------
-  alpha_shared <- -sum(probs * betas * mu_X)
-  alphas <- rep(alpha_shared, length(betas))
-  
-  # --------------------------------------------------------------------------
-  # 5. Residual variance to ensure Var(Y_sum) matches
-  # --------------------------------------------------------------------------
-  y_means <- betas * mu_X + alphas
-  mean_y  <- sum(probs * y_means)
-  
-  var_Y <- sum(probs * (betas^2 * var_X_sum + (y_means - mean_y)^2))
-  residual_var <- var_Y_sum - var_Y
-  
-  sigmas_sq <- rep(residual_var, length(betas))
-  
-  # --------------------------------------------------------------------------
-  # 6. Name outputs
-  # --------------------------------------------------------------------------
-  names(betas) <- names(alphas) <- names(sigmas_sq) <- paste0("G", 1:length(betas))
-  
-  return(list(
-    intercepts         = alphas,
-    slopes             = betas,
-    residual_variances = sigmas_sq
-  ))
+  return(out)
 }
+
+
+
+
 
 ################################################################################
 # Derive parameters for each set of conditions
@@ -522,7 +470,7 @@ for (categories in 2:3) {
       probs <- group_probs3[p,]
       bin <- F
     }
-      
+    
     for (rsq_product in rsq_prod) {
       
       factor_means <- solve_factor_means(probs = probs, binary = bin)
@@ -581,19 +529,26 @@ for (categories in 2:3) {
               n_Y            = items,
               stanload       = load
             )
+          } 
+          
+          
+          
+          if(bin == T) {
+            slopes <- moderated_params$beta_G2
+            int_slopes <- moderated_params$beta_XG2
+          } else{
+            slopes <- c(moderated_params$beta_G2, moderated_params$beta_G3)
+            int_slopes <- c(moderated_params$beta_XG2, moderated_params$beta_XG3)
           }
+          sum_mod <- latent_to_sumscore_moderation(beta_0 = moderated_params$beta_0,
+                                                   beta_G = slopes,   # vector of group effects (β_G2, β_G3,...)
+                                                   beta_X = moderated_params$beta_X,
+                                                   beta_XG = int_slopes,  # vector of interaction effects (β_XG2, β_XG3,...)
+                                                   res.var = moderated_params$residual_variance,
+                                                   n_items = items, 
+                                                   lambda = load,
+                                                   binary = bin)
           
-          sum_group <- sum_score_parameter_group(loading = load, n_X = items,
-                                                 n_Y = items, mu_X = factor_means,
-                                                 probs = probs,
-                                                 rsq_baseline = rsq_baseline,
-                                                 rsq_product  = rsq_product,
-                                                 binary = bin)
-          
-          sum_mod <- group_to_moderated(mu_X = factor_means,
-                                        probs = probs,
-                                        group_params = sum_group,
-                                        binary = bin)
           
           name <- paste0("cat",categories,"_prob",p,"_rsq",rsq_product,"_items",
                          items,"_loading",load)
@@ -617,7 +572,6 @@ for (categories in 2:3) {
     }
   }
 }
-
 
 
 save(parameter_values, file = "parameter_values.rda")
