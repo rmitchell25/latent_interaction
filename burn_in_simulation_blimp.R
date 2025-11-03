@@ -6,7 +6,8 @@ library(car)
 options(scipen=999)
 
 
-dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
+# dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
+dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
 
 cats <- c(2,3)
 group_probs <- seq(1:3)
@@ -17,13 +18,16 @@ n_item <- c(6,12)    # 6 or 12
 reps <- 100
 seed <- 91030
 
-burn <- seq(5000,30000, by = 5000)
-iteration <- seq(5000,30000, by = 5000)
+# burn <- seq(5000,30000, by = 5000)
+# iteration <- seq(5000,30000, by = 5000)
+
+burnin <- 15000
+iter <- 15000
 
 resultsfull<- NULL
 
-for (burnin in burn) {
-  for (iter in iteration) {
+#for (burnin in burn) {
+ # for (iter in iteration) {
     for (rep in 1:reps) {
       for (cat in cats) {
         for (group_prob in group_probs){
@@ -137,7 +141,7 @@ for (burnin in burn) {
                   results[,10] <- NA
                 }
                 
-                resultsfull<- cbind(resultsfull,results)
+                resultsfull<- rbind(resultsfull,results)
                 
                 
               }
@@ -146,8 +150,8 @@ for (burnin in burn) {
         }
       }
     }
-  }
-}
+#  }
+#}
 
 resultsfull <- as.data.frame(resultsfull)
 colnames(resultsfull) <- c("cat","group_prob","N","loading","n_items","rep",
