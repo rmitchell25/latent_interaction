@@ -6,8 +6,8 @@ library(car)
 options(scipen=999)
 
 
-# dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
-dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
+dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
+# dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
 
 cats <- c(2,3)
 group_probs <- seq(1:3)
@@ -25,6 +25,8 @@ burnin <- 15000
 iter <- 15000
 
 resultsfull<- NULL
+
+counter <- 1
 
 #for (burnin in burn) {
  # for (iter in iteration) {
@@ -144,6 +146,10 @@ resultsfull<- NULL
                 resultsfull<- rbind(resultsfull,results)
                 
                 
+                print(counter)
+                counter <- counter+ 1
+                
+                
               }
             }
           }
@@ -154,8 +160,8 @@ resultsfull<- NULL
 #}
 
 resultsfull <- as.data.frame(resultsfull)
-colnames(resultsfull) <- c("cat","group_prob","N","loading","n_items","rep",
-                           "psr_check","neff_check")
+colnames(resultsfull) <- c("cat","group_prob","N","loading","n_items","rep","burnin",
+                           "iter", "psr_check","neff_check")
 
 
-
+save(resultsfull, file = "firstburn.rda")
