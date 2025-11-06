@@ -6,13 +6,13 @@ library(car)
 options(scipen=999)
 
 
-# dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
-dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
+dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
+# dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
 
 cats <- c(2,3)
 group_probs <- seq(1:3)
 rsq_prod <- 0.03    # c(0, 0.03, 0.07)
-Ns <- c(100,1000)      # seq(100,400, by = 50), 500, 1000
+Ns <- c(100,150,200)      # seq(100,400, by = 50), 500, 1000
 loadings <- c(.5,.8)   # .5 or .8
 n_item <- c(6,12)    # 6 or 12
 reps <- 20
@@ -21,18 +21,18 @@ seed <- 91030
 # burn <- seq(5000,30000, by = 5000)
 # iteration <- seq(5000,30000, by = 5000)
 
-burnin <- 15000
-iter <- 15000
+burnin <- 20000
+iter <- 20000
 
 resultsfull<- NULL
 
 counter <- 1
 
-rep <- group_prob <- 2
-cat <- 3
-N <- 100
-loading <- .5
-n_items <- 12
+# rep <- group_prob <- 2
+# cat <- 3
+# N <- 100
+# loading <- .5
+# n_items <- 12
 
 
 #for (burnin in burn) {
@@ -129,9 +129,6 @@ n_items <- 12
                   return(NULL)
                 })
                 
-                blimp_est <- blimp_model@estimates
-                cleaned_output <- blimp_est[!grepl("standardized", rownames(blimp_est), ignore.case = TRUE), ]
-                
                 
                 results <- matrix(NA, nrow = 1, ncol = 10)
                 
@@ -145,6 +142,9 @@ n_items <- 12
                 results[,8] <- iter
                 
                 if (no_cvg_blimp == 0){
+                  blimp_est <- blimp_model@estimates
+                  cleaned_output <- blimp_est[!grepl("standardized", rownames(blimp_est), ignore.case = TRUE), ]
+                  
                   psr_check <- max(cleaned_output[,10], na.rm = T)
                   neff_check <- min(cleaned_output[,7], na.rm = T)
                   results[,9] <- psr_check
