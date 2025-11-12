@@ -6,13 +6,13 @@ library(car)
 options(scipen=999)
 
 
-dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
-# dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
+# dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
+dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
 
 cats <- c(2,3)
 group_probs <- seq(1:3)
 rsq_prod <- 0.03    # c(0, 0.03, 0.07)
-Ns <- c(150,200)      # seq(100,400, by = 50), 500, 1000
+Ns <- c(100)      # seq(100,400, by = 50), 500, 1000
 loadings <- c(.5,.8)   # .5 or .8
 n_item <- c(6,12)    # 6 or 12
 reps <- 20
@@ -21,8 +21,8 @@ seed <- 91030
 # burn <- seq(5000,30000, by = 5000)
 # iteration <- seq(5000,30000, by = 5000)
 
-burnin <- 25000
-iter <- 25000
+burnin <- 50000
+iter <- 50000
 
 resultsfull<- NULL
 
@@ -175,4 +175,4 @@ colnames(resultsfull) <- c("cat","group_prob","N","loading","n_items","rep","bur
                            "iter", "psr_check","neff_check")
 
 
-save(resultsfull, file = "firstburn.rda")
+save(resultsfull, file = "fifthburn.rda")
