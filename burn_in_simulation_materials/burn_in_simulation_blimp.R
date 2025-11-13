@@ -6,8 +6,8 @@ library(car)
 options(scipen=999)
 
 
-# dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
-dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
+dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
+# dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
 
 cats <- c(2,3)
 group_probs <- seq(1:3)
