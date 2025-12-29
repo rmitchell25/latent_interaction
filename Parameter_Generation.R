@@ -11,9 +11,9 @@ library(rblimp)
 corr_Xs <- .20
 rsq_baseline <- .13
 rsq_prod <- c(0,0.03,0.07)
-group_probs3 <- rbind(c(.34, .33, .33),
-                      c(.40, .40, .20),
-                      c(.60, .20, .20))
+group_probs3 <- rbind(c(.34, .33, .33), 
+                      c(.46, .27, .27),
+                      c(.74, .13, .13))
 group_probs2 <- rbind(c(.50,.50),
                       c(.60,.40),
                       c(.80,.20))
