@@ -26,7 +26,7 @@ inadmiss_summary_rep <- rep_clean %>%
   reframe(inadmiss_check = (psr.max > 1.05 & neff.min < 100), .groups = "drop")
 summary(inadmiss_summary_rep$inadmiss_check)
 
-# Filter out Blimp models that idadmissably converged
+# Filter out Blimp models that indadmissably converged
 rep_clean <- rep_clean[rep_clean$model_type != 1 |(rep_clean$model_type == 1 &
                                                      rep_clean$neff.min >= 100 &
                                                      rep_clean$psr.max <= 1.10),]
@@ -39,10 +39,17 @@ rep_binary <- rep_binary[rep_binary$param.id == "beta_XG2",]
 
 
 # Clean up CI Coverage variable ----
-rep_binary$test <- ifelse(rep_binary$true > rep_binary$ci.low &
+rep_binary$CI_cov <- ifelse(rep_binary$true > rep_binary$ci.low &
                             rep_binary$true < rep_binary$ci.up, 1, 0)
-mean(rep_binary$test == rep_binary$ci.cov, na.rm = TRUE)
 
+mean(rep_binary$CI_cov == rep_binary$ci.cov, na.rm = TRUE)
+rep_binary[rep_binary$ci.cov != rep_binary$CI_cov, ]
+
+
+rep_binary$CI_zero <- ifelse(0 > rep_binary$ci.low & 0 < rep_binary$ci.up, 1, 0)
+
+mean(rep_binary$CI_zero == rep_binary$ci.zero, na.rm = TRUE)
+rep_binary[rep_binary$ci.zero != rep_binary$CI_zero, ]
 
 
 # Standardize Performance Measures (z > 5 get cut) ----
@@ -81,7 +88,7 @@ standardize_check_sim <- function(data, vars, cut_threshold = 5) {
               variance = variance_summary, cut_summary = cut_summary))
 }
 
-vars_to_check <- c("sig", "ci.cov", "ci.zero", "bias")
+vars_to_check <- c("sig", "CI_cov", "CI_zero", "bias")
 
 result <- standardize_check_sim(rep_binary, vars_to_check, cut_threshold = 5)
 
@@ -93,5 +100,4 @@ cut_info <- result$cut_summary
 save(rep_binary, file = "rep_binary.rda")
 
 
-# AGGREGATE
 
