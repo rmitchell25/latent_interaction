@@ -1,0 +1,53 @@
+library(ggplot2)
+library(dplyr)
+options(scipen = 999)
+
+
+# Load data ----
+setwd("/Users/remus/Documents/GitHub/latent_interaction/post_sim_review/binary_AERA")
+load(file = "agg_results.rda")
+
+
+# Get unique combinations of rsq_prod and n_items
+combinations <- agg_results %>%
+  distinct(rsq_prod, n_items)
+
+# Loop over each combination
+for (i in 1:nrow(combinations)) {
+  
+  plot_data <- agg_results %>%
+    filter(rsq_prod == combinations$rsq_prod[i], n_items  == combinations$n_items[i],
+           group_prob %in% c("50/50", "80/20"))
+  
+  # 🔴 Skip if no data
+  if (nrow(plot_data) == 0) next
+  
+  plot_data <- plot_data %>%
+    mutate(
+      group_prob = factor(group_prob, levels = c("50/50", "80/20")),
+      loading    = factor(loading),
+      model_type = factor(model_type),
+      sample_size = factor(sample_size))
+  
+  
+  p <- ggplot(plot_data, aes(x = sample_size, y = sig,
+                             color = model_type,
+                             group = model_type)) +
+    geom_line() + geom_point() + facet_grid(rows = vars(loading),
+                                            cols = vars(group_prob),
+                                            labeller = label_both) +
+    scale_color_brewer(palette = "Set1", name = "Model Type") +
+    labs(
+      title = paste0("Rejection Rate | rsq_prod = ", combinations$rsq_prod[i],
+                     ", n_items = ", combinations$n_items[i]),
+      x = "Sample Size", y = "Rejection Rate") +
+    theme_bw() +
+    theme(
+      plot.title      = element_text(hjust = 0.5, face = "bold"),
+      legend.position = "bottom",
+      axis.text.x     = element_text(angle = 45, hjust = 1),
+      strip.background = element_rect(fill = "lightblue"),
+      strip.text       = element_text(face = "bold"))
+  
+  print(p)
+}

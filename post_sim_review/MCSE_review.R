@@ -45,11 +45,11 @@ summary(MSE_mcse$mcse_MSE)
 
 
 # CI COVERAGE ----
-coverage_mcse <- rep_binary %>%
+coverage_mcse <- agg_results %>%
   group_by(categories, group_prob, rsq_prod, sample_size, loading, n_items, 
            model_type, param.id) %>%
   summarise(n_sim = n(),
-            coverage = mean(ci.cov),
+            coverage = mean(CI_cov),
             mcse_coverage = sqrt(coverage * (1 - coverage) / n_sim),
             .groups = "drop")
 
