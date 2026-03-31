@@ -4,11 +4,12 @@ library(dplyr)
 # Load data ----
 rep_level <- read.table("~/Documents/GitHub/latent_interaction/post_sim_review/binary_AERA/rep_level.dat", 
                         quote="\"", comment.char="")
-colnames(rep_level) <- c("categories", "group_prob", "rsq_prod", "sample_size", 
+colnames(rep_binary) <- c("categories", "group_prob", "rsq_prod", "sample_size", 
                          "loading", "n_items", "model_type", "param.id", "est", 
                          "se","true", "bias", "rel.bias", "squared_bias","pval", 
                          "sig", "ci.cov", "ci.zero","joint.stat","joint.p",
-                         "no_cvg_check", "psr.max","neff.min","ci.low","ci.up")
+                         "no_cvg_check", "psr.max","neff.min","ci.low","ci.up",
+                         "rep","seed")
 
 
 # Check number of replications ----
@@ -71,15 +72,15 @@ rep_binary <- rep_binary %>%
 
 
 # Clean up CI Coverage variable ----
-rep_binary$CI_cov <- ifelse(rep_binary$true > rep_binary$ci.low &
-                            rep_binary$true < rep_binary$ci.up, 1, 0)
-mean(rep_binary$CI_cov == rep_binary$ci.cov, na.rm = TRUE)
-rep_binary[rep_binary$ci.cov != rep_binary$CI_cov, ]
-
-
-rep_binary$CI_zero <- ifelse(0 > rep_binary$ci.low & 0 < rep_binary$ci.up, 1, 0)
-mean(rep_binary$CI_zero == rep_binary$ci.zero, na.rm = TRUE)
-rep_binary[rep_binary$ci.zero != rep_binary$CI_zero, ]
+# rep_binary$CI_cov <- ifelse(rep_binary$true > rep_binary$ci.low &
+#                             rep_binary$true < rep_binary$ci.up, 1, 0)
+# mean(rep_binary$CI_cov == rep_binary$ci.cov, na.rm = TRUE)
+# rep_binary[rep_binary$ci.cov != rep_binary$CI_cov, ]
+# 
+# 
+# rep_binary$CI_zero <- ifelse(0 > rep_binary$ci.low & 0 < rep_binary$ci.up, 1, 0)
+# mean(rep_binary$CI_zero == rep_binary$ci.zero, na.rm = TRUE)
+# rep_binary[rep_binary$ci.zero != rep_binary$CI_zero, ]
 
 
 

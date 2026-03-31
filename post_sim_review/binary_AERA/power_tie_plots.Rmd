@@ -11,7 +11,7 @@ options(scipen = 999)
 
 
 # Load data ----
-setwd("/Users/remus/Documents/GitHub/latent_interaction/post_sim_review/binary_AERA")
+setwd("/Users/remus/Documents/GitHub/latent_interaction/sim_latent_interaction")
 load(file = "agg_results.rda")
 
 
@@ -20,18 +20,20 @@ combinations <- agg_results %>%
   distinct(rsq_prod, n_items)
 
 # Loop over each combination
+
+# Loop over each combination
 for (i in 1:nrow(combinations)) {
   
   plot_data <- agg_results %>%
     filter(rsq_prod == combinations$rsq_prod[i], n_items  == combinations$n_items[i],
-           group_prob %in% c("50/50", "80/20"))
+           group_prob %in% c(1,2))
   
   # Skip if no data
   if (nrow(plot_data) == 0) next
   
   plot_data <- plot_data %>%
     mutate(
-      group_prob = factor(group_prob, levels = c("50/50", "80/20")),
+      group_prob = factor(group_prob, levels = c(1, 2)),
       loading    = factor(loading),
       model_type = factor(model_type),
       sample_size = factor(sample_size))
