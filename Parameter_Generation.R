@@ -14,7 +14,7 @@ group_probs3 <- rbind(c(.34, .33, .33),
 group_probs2 <- rbind(c(.50,.50),
                       c(.60,.40),
                       c(.80,.20))
-# sample_size <- c(seq(100,400, by = 50),500,1000)
+sample_size <- c(seq(100,400, by = 50),500,1000)
 loading_size <- c(.5,.8)
 num_loadings <- c(6,12)
 
@@ -24,14 +24,25 @@ num_loadings <- c(6,12)
 solve_factor_means <- function(probs, target_corr = corr_Xs, binary = F) {
   
   if(binary == T){
-    p1 <- probs[1] 
+    p1 <- probs[1]
     p2 <- probs[2]
     
     stopifnot(abs(p1 + p2 - 1) < 1e-6)
     
-    # Closed-form solutions from derivation
-    mu1 <- target_corr * sqrt(p2 / p1)
-    mu2 <- -target_corr * sqrt(p1 / p2)
+    objective <- function(mu2) {
+      mu1         <- -(p2 * mu2) / p1
+      mu_bar      <- 0
+      var_between <- p1 * mu1^2 + p2 * mu2^2
+      var_within  <- 1 - var_between
+      var_X       <- var_between + var_within
+      cov_X_G2    <- p2 * mu2
+      var_G2      <- p2 * (1 - p2)
+      corr_G2     <- cov_X_G2 / sqrt(var_X * var_G2)
+      (corr_G2 - target_corr)^2
+    }
+    
+    mu2 <- optimize(objective, interval = c(-3, 3))$minimum
+    mu1 <- -(p2 * mu2) / p1
     
     return(c(mu1 = mu1, mu2 = mu2))
     
@@ -87,31 +98,19 @@ solve_factor_means <- function(probs, target_corr = corr_Xs, binary = F) {
 solve_factor_variance <- function(mu_X, probs, target_var = 1, binary = F) {
   
   if(binary == T){
-    stopifnot(length(mu_X) == 2, length(probs) == 2, abs(sum(probs) - 1) < 1e-6)
+    stopifnot(length(mu_X) == 2,
+              length(probs) == 2,
+              abs(sum(probs) - 1) < 1e-6)
     
-    # Pooled (overall) mean of X
-    mu_bar <- sum(probs * mu_X)
-    
-    # Between-group variance component
+    mu_bar      <- sum(probs * mu_X)
     var_between <- sum(probs * (mu_X - mu_bar)^2)
+    var_within  <- target_var - var_between
     
-    # Solve for within-group variance to achieve total variance = target_var
-    var_within <- target_var - var_between
-    
-    if(var_within <= 0) {
-      stop("Cannot achieve Var(X)=1 with these group means. var_within = ", var_within)
-    }
-    
-    # All group variances assumed equal
     var_group <- rep(var_within, 2)
     names(var_group) <- paste0("sigma_sq_g", 1:2)
     
-    return(list(
-      mu_bar = mu_bar,
-      var_between = var_between,
-      var_within = var_within,
-      group_variances = var_group
-    ))
+    return(list(mu_bar = mu_bar, var_between = var_between,var_within = var_within,
+      group_variances = var_group))
     
   } else{
     
@@ -151,84 +150,63 @@ solve_group_parameters <- function(mu_X, var_X, probs, rsq_baseline, rsq_product
                                    binary = F) {
   
   if(binary == T){
+    stopifnot(length(mu_X) == 2,
+              length(var_X) == 2,
+              length(probs) == 2,
+              abs(sum(probs) - 1) < 1e-6)
     
-    stopifnot(length(mu_X) == 2, length(var_X) == 2, length(probs) == 2, abs(sum(probs) - 1) < 1e-6)
-    stopifnot(all(var_X > 0), rsq_baseline >= 0, rsq_product >= 0, 
-              rsq_baseline + rsq_product <= 1)
-    
-    mu_X <- as.numeric(mu_X)
+    mu_X  <- as.numeric(mu_X)
     var_X <- as.numeric(var_X)
     probs <- as.numeric(probs)
     
-    # 1. Solve for baseline slope that gives exact rsq_baseline
-    objective_baseline <- function(b0) {
-      alpha <- -sum(probs * b0 * mu_X)
-      pred_means <- alpha + b0 * mu_X
-      grand_mean_y <- sum(probs * pred_means)
-      
-      # Correct variance calculation: Var(Yhat) = E[Var(Yhat|G)] + Var(E[Yhat|G])
-      within_component <- sum(probs * b0^2 * var_X)
-      between_component <- sum(probs * (pred_means - grand_mean_y)^2)
-      var_predicted <- within_component + between_component
-      
-      return((var_predicted - rsq_baseline)^2)
-    }
+    # --- baseline slope ---
+    beta_baseline <- sqrt(rsq_baseline)
     
-    beta_baseline <- optimize(objective_baseline, interval = c(-5, 5))$minimum
-    
-    # 2. Optimize delta2 (only one delta needed in two-group case)
+    # --- match TOTAL explained variance in Y (same as cluster code) ---
     objective <- function(delta2) {
-      deltas <- c(0, delta2)  # Group 1 is reference
-      betas <- beta_baseline + deltas
       
-      # Compute shared intercept to ensure E[Y] = 0
-      alpha <- -sum(probs * betas * mu_X)
+      deltas <- c(0, delta2)   # asymmetric (matches cluster version)
+      betas  <- beta_baseline + deltas
       
-      # Compute predicted means per group
-      pred_means <- alpha + betas * mu_X
-      grand_mean_y <- sum(probs * pred_means)
+      # implied Y means
+      y_means <- betas * mu_X
+      mean_y  <- sum(probs * y_means)
       
-      # Var(Yhat) = E[Var(Yhat|G)] + Var(E[Yhat|G])
-      within_component <- sum(probs * betas^2 * var_X)
-      between_component <- sum(probs * (pred_means - grand_mean_y)^2)
-      var_predicted <- within_component + between_component
+      # total explained variance in Y
+      explained_var <- sum(
+        probs * (betas^2 * var_X + (y_means - mean_y)^2)
+      )
       
-      target_rsq <- rsq_baseline + rsq_product
-      return((var_predicted - target_rsq)^2)
+      (explained_var - (rsq_baseline + rsq_product))^2
     }
     
-    delta2_opt <- optimize(objective, interval = c(-5, 5))$minimum
+    # --- solve for interaction ---
+    delta2_opt <- optimize(objective, interval = c(0, 5))$minimum
+    
     deltas <- c(0, delta2_opt)
-    betas <- beta_baseline + deltas
+    betas  <- beta_baseline + deltas
     
-    # 3. Shared intercept to ensure E[Y] = 0
+    # --- intercepts (same as cluster version) ---
     alpha_shared <- -sum(probs * betas * mu_X)
-    alphas <- rep(alpha_shared, 2)
+    alphas       <- rep(alpha_shared, 2)
     
-    # 4. Residual variance to ensure Var(Y) = 1
-    pred_means <- alpha_shared + betas * mu_X
-    grand_mean_y <- sum(probs * pred_means)
-    within_component <- sum(probs * betas^2 * var_X)
-    between_component <- sum(probs * (pred_means - grand_mean_y)^2)
-    var_predicted <- within_component + between_component
+    # --- compute TRUE residual variance (not fixed) ---
+    y_means <- betas * mu_X + alphas
+    var_Y   <- sum(
+      probs * (betas^2 * var_X + (y_means - sum(probs * y_means))^2)
+    )
     
-    if(var_predicted >= 1) {
-      stop("Predicted variance >= 1. Cannot achieve R² = ", 
-           rsq_baseline + rsq_product, " with Var(Y)=1")
-    }
-    
-    residual_var <- 1 - var_predicted
-    sigmas_sq <- rep(residual_var, 2)
+    residual_var <- 1 - var_Y
+    sigmas_sq    <- rep(residual_var, 2)
     
     names(betas) <- names(alphas) <- names(sigmas_sq) <- paste0("G", 1:2)
     
     return(list(
-      intercepts = alphas,
-      slopes = betas,
-      residual_variances = sigmas_sq,
-      predicted_variance = var_predicted,
-      target_r_squared = rsq_baseline + rsq_product
+      intercepts         = alphas,
+      slopes             = betas,
+      residual_variances = sigmas_sq
     ))
+    
     
   } else{
     
@@ -324,29 +302,22 @@ group_to_moderated <- function(mu_X, probs, group_params, binary = F) {
   
   if(binary == T){
     
-    stopifnot(length(mu_X) == 2, length(probs) == 2)
-    
-    # Extract components from group_params
     intercepts <- group_params$intercepts
-    slopes <- group_params$slopes
+    slopes     <- group_params$slopes
     resid_vars <- group_params$residual_variances
     
-    # 1. Reference group: Group 1
-    beta_0 <- intercepts[1]
-    beta_X <- slopes[1]
+    beta_0  <- intercepts[1]
+    beta_X  <- slopes[1]
+    beta_G  <- intercepts[2] - intercepts[1]
+    beta_XG <- slopes[2]     - slopes[1]
     
-    # 2. Dummy-coded differences for Group 2
-    beta_G2 <- intercepts[2] - intercepts[1]
-    beta_XG2 <- slopes[2] - slopes[1]
-    
-    # 3. Pooled residual variance
     residual_variance <- sum(probs * resid_vars)
     
     return(list(
-      beta_0 = beta_0,
-      beta_G2 = beta_G2,
-      beta_X = beta_X,
-      beta_XG2 = beta_XG2,
+      beta_0            = beta_0,
+      beta_G            = beta_G,
+      beta_X            = beta_X,
+      beta_XG           = beta_XG,
       residual_variance = residual_variance
     ))
     
@@ -398,10 +369,9 @@ model_implied_moments <- function(mu_X, var_X, alpha, beta, residual_var_Y,
     
     # Measurement parameters
     lambda_X <- stanload
-    theta_X  <- 1 - lambda_X^2  
-    
+    theta_X  <- 1 - lambda_X^2
     lambda_Y <- 1.00
-    theta_Y  <- 1 - stanload^2
+    theta_Y  <- 1 / stanload^2 - 1
     
     # Latent means
     mu_Y <- alpha + beta * mu_X
