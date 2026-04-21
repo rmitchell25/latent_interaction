@@ -4,20 +4,20 @@
 #$ -j y
 #  Resources requested
 #$ -l h_data=10G,h_rt=3:00:00
-#$ -t 1-10:1
+#$ -t 1-200:1
 
 
-NUMREPS=10
+NUMREPS=200
 
 cat=(2 3)
 groupprob=(1 2 3)
 rsq=(0 .03 .07)
-sample=(100  150  200  250  300  350  400  500 1000)
+sample=(100 150 200 250 300 350 400 500 1000)
 loading=(.5 .8)
 nitem=(6 12)
 
 # cluster specifications
-INTERACTIVE=1
+INTERACTIVE=0
 MULTIPLE=1
 
 if [ ${INTERACTIVE} = 1 ]
@@ -26,9 +26,9 @@ if [ ${INTERACTIVE} = 1 ]
 		CATLOOP=0
 		PROBLOOP=0
 		RSQLOOP=0
-		NLOOP=0
+		NLOOP=1
 		LOADLOOP=0
-	    ITEMLOOP=1
+	    ITEMLOOP=0
 
 	fi
 
@@ -61,10 +61,10 @@ else
 	. /u/local/Modules/default/init/modules.sh
 	source /u/local/Modules/default/init/modules.sh #IDRE support said to add this line
 	module use /u/project/cenders/apps/modulefiles
-	module load gcc/10.2.0
-	module load blimp/3.2.3
-	module load nlopt
-	module load R/4.4.0
+ 	module load gcc/10.2.0
+    module load nlopt
+    module load blimp
+    module load R/4.4.0
 
 fi
 # housekeeping: clean out folders before starting sim
@@ -75,11 +75,6 @@ fi
 # REP RANGE
 REPFIRST=${SGE_TASK_ID}
 REPLAST=$((${REPFIRST} + ${MULTIPLE}))
-
-# print start time to determine runtime
-#echo "conditions: gprobs = ${PROBLOOP}, RSQ = ${RSQLOOP}, sample = ${NLOOP}, loading = ${LOADLOOP}" #>> ${MISCDIR}/time_log.txt
-#echo "start time: " ` date ` #>> ${MISCDIR}/time_log.txt
-
 
 
 for (( REPLOOP = ${REPFIRST}; REPLOOP < ${REPLAST}; REPLOOP++ )); do
@@ -97,13 +92,8 @@ for (( REPLOOP = ${REPFIRST}; REPLOOP < ${REPLAST}; REPLOOP++ )); do
 
 	SEED=$(sed -n "${SEEDLINENUM}p" "${MISCDIR}/seedlist.dat")
 
-	${RPATH} --no-save --slave --args ${RUNONCLUSTER} ${DIRNAME} ${FILENAME} ${cat[CATLOOP]} ${groupprob[PROBLOOP]} ${rsq[RSQLOOP]} ${sample[NLOOP]} ${loading[LOADLOOP]} ${nitem[ITEMLOOP]} ${REPLOOP} ${SEED} < ${PROGDIR}/simulation_one_rep.R
+	#${RPATH} --no-save --slave --args ${RUNONCLUSTER} ${DIRNAME} ${FILENAME} ${cat[CATLOOP]} ${groupprob[PROBLOOP]} ${rsq[RSQLOOP]} ${sample[NLOOP]} ${loading[LOADLOOP]} ${nitem[ITEMLOOP]} ${REPLOOP} ${SEED} < ${PROGDIR}/simulation_one_rep.R
 
-	#echo "${RUNONCLUSTER} ${DIRNAME} ${cat[CATLOOP]} ${groupprob[PROBLOOP]} ${rsq[RSQLOOP]} ${sample[NLOOP]} ${loading[LOADLOOP]} ${nitem[ITEMLOOP]} ${REPLOOP} ${SEED}"
+	echo "${RUNONCLUSTER} ${DIRNAME} ${cat[CATLOOP]} ${groupprob[PROBLOOP]} ${rsq[RSQLOOP]} ${sample[NLOOP]} ${loading[LOADLOOP]} ${nitem[ITEMLOOP]} ${REPLOOP} ${SEED}"
 
 done   
-
-# print end time to determine runtime
-#echo "end time: " ` date ` #>> ${MISCDIR}/time_log.txt
-
-

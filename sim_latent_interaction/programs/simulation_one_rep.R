@@ -31,10 +31,10 @@ if(runfromshell){
   dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
   filename<- "g1prod03N350load5item6"
   
-  cat <- 3
-  group_prob <- 1  # 1:3
-  rsq_prod <- 0.07    # 0, 0.03, 0.07
-  N <- 100      # seq(100,400, by = 50), 500, 1000
+  cat <- 2
+  group_prob <- 2  # 1:3
+  rsq_prod <- 0   # 0, 0.03, 0.07
+  N <- 400      # seq(100,400, by = 50), 500, 1000
   loading <- .5   # .5 or .8
   n_items <- 6    # 6 or 12
   rep <- 1
@@ -57,9 +57,11 @@ group_probs2 <- rbind(c(.50,.50),
 if(cat == 2){
   probs <- group_probs2[group_prob,]
   bin <- T
+  numparams <- 5
 } else {
   probs <- group_probs3[group_prob,]
   bin <- F
+  numparams <- 7
 }
 
 
@@ -68,6 +70,20 @@ if(cat == 2){
 
 # Load parameters file
 load(file = paste0(dirname,"/misc/parameter_values.rda"))
+
+# TESTS
+# print(paste("Loading from:", paste0(dirname,"/misc/parameter_values.rda")))
+# print(file.exists(paste0(dirname,"/misc/parameter_values.rda")))
+# 
+# print("Objects in environment after load:")
+# print(ls())
+# 
+# print("parameter_values exists?")
+# print(exists("parameter_values"))
+# 
+# print("Names inside parameter_values:")
+# print(names(parameter_values)[1:5])
+# print(paste0("dirname = ", dirname))
 
 name <- paste0("cat",cat,"_prob",group_prob,"_rsq",rsq_prod,"_items",
                n_items,"_loading",loading)
@@ -118,24 +134,56 @@ syntax <- list(
                   'G ~ X')
 )
 
-blimp_model <- rblimp(
-  data = dat,
-  latent = 'X Y',
-  nominal = 'G',
-  model = syntax,
-  simple = 'X | G',
-  seed = seed,
-  burn = 10000,
-  iter = 10000,
-  output = "default wald pvalue",
-  waldtest = list('int = 0')
-)
+no_cvg_blimp <- 0  # initialize
+
+blimp_model <- tryCatch({
+  rblimp(
+    data = dat,
+    latent = 'X Y',
+    nominal = 'G',
+    model = syntax,
+    parameters = 'lx1 ~ trunc(0,1)',
+    simple = 'X | G',
+    seed = seed,
+    burn = 20000,
+    iter = 20000,
+    waldtest = list('int = 0')
+  )
+}, error = function(e) {
+  message("Blimp model failed to converge: ", e$message)
+  no_cvg_blimp <<- 1
+  return(NULL)
+})
 # output(blimp_model)
+
+if(no_cvg_blimp == 0){
+  blimp.est <- as.numeric(c(blimp_model@estimates[2:numparams,1],blimp_model@estimates[1,1]))
+  blimp.se <- as.numeric(c(blimp_model@estimates[2:numparams,2],blimp_model@estimates[1,2]))
+  
+  pvalues_blimp <- as.numeric(c(blimp_model@estimates[2:numparams,6], blimp_model@estimates[1,6]))
+  CIL_blimp <- as.numeric(c(blimp_model@estimates[2:numparams,3],blimp_model@estimates[1,3]))
+  CIU_blimp <- as.numeric(c(blimp_model@estimates[2:numparams,4],blimp_model@estimates[1,4]))
+  
+  if(!bin){
+    blimp_joint_stat <- rep(blimp_model@waldtest[["statistic"]],numparams)
+    blimp_joint_p <- rep(blimp_model@waldtest[["probability"]],numparams)
+  } else {
+    blimp_joint_p <- blimp_joint_stat <- rep(NA, numparams)
+  }
+
+} else {
+  blimp.est <- blimp.se <- pvalues_blimp <- CIL_blimp <- CIU_blimp <- rep(NA, numparams)
+  blimp_joint_p <- blimp_joint_stat <- rep(NA, numparams)
+}
+
+
 
 
 
 
 # Fit multigroup version with Lavaan ----
+
+no_cvg_lavaan <- 0
 
 if(n_items == 6){
   if(bin == T){
@@ -235,18 +283,41 @@ if(n_items == 6){
   }
 }
 
+
 # fit multiple group model
-fit <- sem(model, data = dat, group = "G",
-           group.equal = c("loadings", "residuals","intercepts"))
+fit <- tryCatch({
+  sem(model, data = dat, group = "G",
+      group.equal = c("loadings", "residuals","intercepts"))
+}, error = function(e) {
+  message("Lavaan model failed to converge: ", e$message)
+  no_cvg_lavaan <<- 1
+  return(NULL)
+})
+
 
 # summarize
-mg_model <-  summary(fit, standardized = T)
-mg_est <- parameterEstimates(fit, ci = TRUE, level = 0.95)
-
-if(!bin){
-  lavJoint <- lavTestWald(fit, constraints = "G2byX_slope == G3byX_slope == 0")
+if(no_cvg_lavaan == 1){
+  mg_model <- mg_est <- lavJoint <- NULL
+  mg.est <- mg.se <- pvalues_mg <- CIL_mg <- CIU_mg <- rep(NA, numparams)
+  lav_joint_stat <- lav_joint_p <- rep(NA, numparams)
+} else {
+  mg_model <-  summary(fit, standardized = T)
+  mg_est <- parameterEstimates(fit, ci = TRUE, level = 0.95)
+  mg.est <- as.numeric(mg_model[["pe"]][["est"]][(((length(mg_model[["pe"]][["est"]])+1)-(numparams))):length(mg_model[["pe"]][["est"]])])
+  mg.se <- as.numeric(mg_model[["pe"]][["se"]][(((length(mg_model[["pe"]][["se"]])+1)-(numparams))):length(mg_model[["pe"]][["se"]])])
+  
+  pvalues_mg <- as.numeric(mg_model[["pe"]][["pvalue"]][(((length(mg_model[["pe"]][["pvalue"]])+1)-(numparams))):length(mg_model[["pe"]][["pvalue"]])])
+  CIL_mg <- as.numeric(mg_est[(1 + nrow(mg_est) - (numparams)):nrow(mg_est),11])
+  CIU_mg <- as.numeric(mg_est[(1 + nrow(mg_est) - (numparams)):nrow(mg_est),12])
+  
+  if(!bin){
+    lavJoint <- lavTestWald(fit, constraints = "G2byX_slope == G3byX_slope == 0")
+    lav_joint_stat <- rep(lavJoint[["stat"]],(numparams))
+    lav_joint_p <- rep(lavJoint[["p.value"]],numparams)
+  } else {
+    lav_joint_stat <- lav_joint_p <- rep(NA, numparams)
+  }
 }
-
 
 
 
@@ -286,11 +357,37 @@ Y_sum <- Y_sum*((mod_parameters[["residual_variance"]]/(1-rsq_prod))/(sd_Y))
 dat <- cbind(dat, X_sum, Y_sum)
 
 # run analysis
-sum_score_model <- lm(Y_sum ~ factor(G) + X_sum + factor(G)*X_sum, data = dat)
-sum_model <- summary(lm(Y_sum ~ factor(G) + X_sum + factor(G)*X_sum, data = dat))
+no_cvg_sum <- 0  # initialize
 
-if (!bin){
-  sumJoint <- linearHypothesis(sum_score_model, c("factor(G)2:X_sum = 0", "factor(G)3:X_sum  = 0"))
+sum_score_model <- tryCatch({
+  lm(Y_sum ~ factor(G) + X_sum + factor(G)*X_sum, data = dat)
+}, error = function(e) {
+  message("Sum score model failed: ", e$message)
+  no_cvg_sum <<- 1
+  return(NULL)
+})
+
+
+if(no_cvg_sum == 1){
+  sum_model <- NULL
+  sum.est <- sum.se <- pvalues_sum <- CIL_sum <- CIU_sum <- rep(NA, numparams)
+  sumJoint_stat <- sumJoint_p <- rep(NA, numparams)
+} else {
+  sum_model <- summary(lm(Y_sum ~ factor(G) + X_sum + factor(G)*X_sum, data = dat))
+  sum.est <- as.numeric(c(sum_model[["coefficients"]][,1], sum_model[["sigma"]]^2))
+  sum.se <- as.numeric(sum_model[["coefficients"]][,2])
+  
+  pvalues_sum <- as.numeric(c(sum_model[["coefficients"]][,4], NA))
+  CIL_sum <- as.numeric(c(confint(sum_score_model, level = 0.95)[,1],NA))
+  CIU_sum <- as.numeric(c(confint(sum_score_model, level = 0.95)[,2],NA))
+  
+  if (!bin){
+    sumJoint <- linearHypothesis(sum_score_model, c("factor(G)2:X_sum = 0", "factor(G)3:X_sum  = 0"))
+    sumJoint_stat <- rep(sumJoint$F[2],numparams)
+    sumJoint_p <- rep(sumJoint$`Pr(>F)`[2],numparams)
+  } else {
+    sumJoint_stat <- sumJoint_p <- rep(NA, numparams)
+  }
 }
 
 
@@ -301,16 +398,17 @@ if (!bin){
 
 # Set up data frame differently based on number of categories
 if (bin == F){
-  results <- as.data.frame(matrix(999, nrow = 21, ncol = 22))
+  results <- as.data.frame(matrix(999, nrow = 21, ncol = 27))
   param.id <- c("beta_0","beta_G2","beta_G3","beta_X","beta_XG2","beta_XG3","res.var")
 } else {
-  results <- as.data.frame(matrix(999, nrow = 15, ncol = 22))
+  results <- as.data.frame(matrix(999, nrow = 15, ncol = 27))
   param.id <- c("beta_0","beta_G2","beta_X","beta_XG2","res.var")
 }
 colnames(results) <- c("categories", "group_prob", "rsq_prod", "N", "loading",
                        "n_items", "model_type", "param.id", "est", "se","true",
                        "bias", "rel.bias", "squared_bias","pval", "sig", "ci.cov",
-                       "ci.zero", "psr", "neff","joint.stat","joint.p")
+                       "ci.zero","joint.stat","joint.p","no_cvg_check",
+                       "psr.max","neff.min","ci.low","ci.up", "rep", "seed")
 
 # Save info on set of conditions
 results[,1] <- cat
@@ -323,28 +421,21 @@ results[,7] <- c(rep(1,(nrow(results)/3)),rep(2,(nrow(results)/3)),rep(3,(nrow(r
 results[,8] <- rep(param.id,3)
 
 
+
+
 # Save estimates, sd, true parameters, and then calculate bias
-blimp.est <- as.numeric(c(blimp_model@estimates[2:(nrow(results)/3),1],blimp_model@estimates[1,1]))
-mg.est <- as.numeric(mg_model[["pe"]][["est"]][(((length(mg_model[["pe"]][["est"]])+1)-(nrow(results)/3))):length(mg_model[["pe"]][["est"]])])
-sum.est <- as.numeric(c(sum_model[["coefficients"]][,1], sum_model[["sigma"]]^2))
 results[,9] <- c(blimp.est, mg.est, sum.est)
-results[,10] <- c(as.numeric(c(blimp_model@estimates[2:(nrow(results)/3),2],blimp_model@estimates[1,2])),
-                  as.numeric(mg_model[["pe"]][["se"]][(((length(mg_model[["pe"]][["se"]])+1)-(nrow(results)/3))):length(mg_model[["pe"]][["se"]])]),
-                  as.numeric(sum_model[["coefficients"]][,2]),NA)
+results[,10] <- c(blimp.se, mg.se, sum.se, NA)
 
-results[,10] <- c(rep(as.numeric(mod_parameters),3))
+results[,11] <- c(rep(as.numeric(mod_parameters),3)) # true values
 
-results[,12] <- results[,9] - results[,10]
-results[,13] <- results[,11]/results[,10]
-results[,14] <- results[,11]^2
+results[,12] <- results[,9] - results[,11]  # bias
+results[,13] <- results[,12]/results[,11]   # relative bias
+results[,14] <- results[,12]^2    # squared bias
 
 
 # P-values and Significance
-pvalues_blimp <- as.numeric(c(blimp_model@estimates[2:(nrow(results)/3),8], blimp_model@estimates[1,8]))
-pvalues_mg <- as.numeric(mg_model[["pe"]][["pvalue"]][(((length(mg_model[["pe"]][["pvalue"]])+1)-(nrow(results)/3))):length(mg_model[["pe"]][["pvalue"]])])
-pvalues_sum <- as.numeric(c(sum_model[["coefficients"]][,4], NA))
 pvals <- c(pvalues_blimp, pvalues_mg, pvalues_sum)
-
 sig_mod<- rep(0,nrow(results))
 sig_mod[pvals < .05]<-1
 
@@ -353,18 +444,11 @@ results[,16] <- sig_mod
 
 
 # CI Coverage - True value within CI
-CIL_blimp <- as.numeric(c(blimp_model@estimates[2:(nrow(results)/3),3],blimp_model@estimates[1,3]))
-CIU_blimp <- as.numeric(c(blimp_model@estimates[2:(nrow(results)/3),4],blimp_model@estimates[1,4]))
-CIL_mg <- as.numeric(mg_est[(1 + nrow(mg_est) - (nrow(results)/3)):nrow(mg_est),11])
-CIU_mg <- as.numeric(mg_est[(1 + nrow(mg_est) - (nrow(results)/3)):nrow(mg_est),12])
-CIL_sum <- as.numeric(c(confint(sum_score_model, level = 0.95)[,1],NA))
-CIU_sum <- as.numeric(c(confint(sum_score_model, level = 0.95)[,2],NA))
-
-CI_lower <- c(CIL_blimp ,CIL_mg, CIL_sum)
-CI_upper <- c(CIU_blimp, CIU_mg, CIU_sum)
+CI_lower <- results[,24] <- c(CIL_blimp ,CIL_mg, CIL_sum)
+CI_upper <- results[,25] <- c(CIU_blimp, CIU_mg, CIU_sum)
 
 CI_cov <- rep(0,nrow(results))
-CI_cov[CI_lower < as.numeric(results[,9]) & CI_upper > as.numeric(results[,9])] <-1
+CI_cov[CI_lower < as.numeric(results[,11]) & CI_upper > as.numeric(results[,11])] <-1
 
 results[,17] <- CI_cov
 
@@ -375,29 +459,31 @@ CI_zero[CI_lower < 0 & CI_upper > 0] <- 1
 results[,18] <- CI_zero
 
 
-# Save PSR and N-effective values from Blimp model
-results[1:(nrow(results)/3),19] <- as.numeric(c(blimp_model@psr[20,2:(nrow(results)/3)],blimp_model@psr[20,1]))
-results[(1+nrow(results)/3):nrow(results),19] <- results[(1+nrow(results)/3):nrow(results),20] <- NA
-results[1:(nrow(results)/3),20] <- as.numeric(c(blimp_model@estimates[2:(nrow(results)/3),6], blimp_model@estimates[1,6]))
-
-
 # Save results from joint tests if cat = 3
 if(!bin){
-  results[,21] <- c(rep(blimp_model@waldtest[["statistic"]],(nrow(results)/3)),
-                    rep(lavJoint[["stat"]],((nrow(results)/3))),
-                    rep(sumJoint$F[2],((nrow(results)/3))))
-  results[,22] <- c(rep(blimp_model@waldtest[["probability"]],(nrow(results)/3)),
-                    rep(lavJoint[["p.value"]],(nrow(results)/3)),
-                    rep(sumJoint$`Pr(>F)`[2],(nrow(results)/3)))
+  results[,19] <- c(blimp_joint_stat, lav_joint_stat, sumJoint_stat)
+  results[,20] <- c(blimp_joint_p, lav_joint_p, sumJoint_p)
 } else {
-  results[,21] <- results[,22] <- NA
+  results[,19] <- results[,20] <- NA
 }
 
+# Save convergence check
+results[,21] <- c(rep(no_cvg_blimp,numparams), rep(no_cvg_lavaan,numparams), rep(no_cvg_sum,numparams))
 
+# save PSR and n-effective
+if(no_cvg_blimp == 0){
+  results[,22] <- max(blimp_model@psr[20,], na.rm = T)
+  results[,23] <- min(blimp_model@estimates[,7], na.rm = T)
+} else {
+  results[,22] <- NA
+  results[,23] <- NA
+}
 
+results[,26] <- rep
+results[,27] <- seed
 
 # Test for shell script
 # results <- c(cat, group_prob, rsq_prod, N, loading, n_items, rep, seed)
 
-write.table(results,paste0(dirname,'/results/',filename,'.dat'),row.names = F,col.names = F)
-
+write.table(results, paste0('/u/scratch/r/remusmit/',filename,'.dat'), row.names = F,
+            col.names = F)
