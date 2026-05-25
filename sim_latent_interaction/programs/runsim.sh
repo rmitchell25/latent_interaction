@@ -81,18 +81,24 @@ for (( REPLOOP = ${REPFIRST}; REPLOOP < ${REPLAST}; REPLOOP++ )); do
 
 	FILENAME=cat${CATLOOP}prob${PROBLOOP}rsq${RSQLOOP}N${NLOOP}load${LOADLOOP}item${ITEMLOOP}rep${REPLOOP}
 
-	SEEDLINECAT=$((${CATLOOP} * ${#groupprob[@]} * ${#rsq[@]} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} + ${REPLOOP} + 1))
-	SEEDLINEPR=$((${PROBLOOP} * ${#rsq[@]} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} + ${REPLOOP}))
-	SEEDLINER=$((${RSQLOOP} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} + ${REPLOOP}))
-	SEEDLINEN=$((${NLOOP} * ${#loading[@]} * ${#nitem[@]} + ${REPLOOP}))
-	SEEDLINEL=$((${LOADLOOP} * ${#nitem[@]} + ${REPLOOP}))
-	SEEDLINENI=$((${ITEMLOOP} + ${REPLOOP}))
-	SEEDLINENUM=$((${SEEDLINECAT} + ${SEEDLINEPR} + ${SEEDLINER} + ${SEEDLINEN} + ${SEEDLINEL} + ${SEEDLINENI}))
+	# Build a unique seed-line number per (condition x replication) pair.
+	# CONDIDX is a mixed-radix encoding of the six loop indices: each loop is
+	# weighted by the product of the sizes of all loops that come after it,
+	# so CONDIDX takes every integer value in 0..(total_conditions - 1) exactly once.
+	# Multiplying by NUMREPS and adding REPLOOP (which runs 1..NUMREPS) then
+	# guarantees each (condition, replication) pair maps to a unique line.
+	CONDIDX=$(( ${CATLOOP}  * ${#groupprob[@]} * ${#rsq[@]} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} \
+	          + ${PROBLOOP} * ${#rsq[@]} * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} \
+	          + ${RSQLOOP}  * ${#sample[@]} * ${#loading[@]} * ${#nitem[@]} \
+	          + ${NLOOP}    * ${#loading[@]} * ${#nitem[@]} \
+	          + ${LOADLOOP} * ${#nitem[@]} \
+	          + ${ITEMLOOP} ))
+	SEEDLINENUM=$(( ${CONDIDX} * ${NUMREPS} + ${REPLOOP} ))
 
 
 	SEED=$(sed -n "${SEEDLINENUM}p" "${MISCDIR}/seedlist.dat")
 
-	#${RPATH} --no-save --slave --args ${RUNONCLUSTER} ${DIRNAME} ${FILENAME} ${cat[CATLOOP]} ${groupprob[PROBLOOP]} ${rsq[RSQLOOP]} ${sample[NLOOP]} ${loading[LOADLOOP]} ${nitem[ITEMLOOP]} ${REPLOOP} ${SEED} < ${PROGDIR}/simulation_one_rep.R
+	${RPATH} --no-save --slave --args ${RUNONCLUSTER} ${DIRNAME} ${FILENAME} ${cat[CATLOOP]} ${groupprob[PROBLOOP]} ${rsq[RSQLOOP]} ${sample[NLOOP]} ${loading[LOADLOOP]} ${nitem[ITEMLOOP]} ${REPLOOP} ${SEED} < ${PROGDIR}/simulation_one_rep.R
 
 	echo "${RUNONCLUSTER} ${DIRNAME} ${cat[CATLOOP]} ${groupprob[PROBLOOP]} ${rsq[RSQLOOP]} ${sample[NLOOP]} ${loading[LOADLOOP]} ${nitem[ITEMLOOP]} ${REPLOOP} ${SEED}"
 

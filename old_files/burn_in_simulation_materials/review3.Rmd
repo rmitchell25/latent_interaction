@@ -1,0 +1,30 @@
+---
+title: "Burn-in Simulation Review - 3 (11.6.25)"
+output: pdf_document
+date: "2025-11-05"
+---
+
+```{r setup}
+library(psych)
+load(file = "thirdburn.rda")
+# Initial review of outcomes ----
+
+neff <- describeBy(neff_check ~ cat + group_prob + N + loading + n_items, 
+                   data = resultsfull, mat = T)
+neff <- cbind(neff[,2:6],neff[,8:11],neff[,14:15])
+colnames(neff) <- c("cat","group_prob","N","loading","n_items","reps","mean","sd",
+                    "median","min","max")
+rownames(neff) <- NULL
+print(neff)
+
+
+psr <- describeBy(psr_check ~ cat + group_prob + N + loading + n_items, 
+                  data = resultsfull, mat = T)
+psr <- cbind(psr[,2:6],psr[,8:11],psr[,14:15])
+colnames(psr) <- c("cat","group_prob","N","loading","n_items","reps","mean","sd",
+                   "median","min","max")
+rownames(psr) <- NULL
+print(psr)
+
+
+```

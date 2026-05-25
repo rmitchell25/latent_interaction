@@ -27,30 +27,30 @@ if(runfromshell){
   seed <- as.numeric(runvars[11])
 }else{
   runoncluster <- 0
-  # dirname <- "C:/Users/remus/OneDrive/Documents/GitHub/latent_interaction/sim_latent_interaction"
   dirname <- "~/Documents/GitHub/latent_interaction/sim_latent_interaction"
-  filename<- "g1prod03N350load5item6"
+  filename<- "test_file"
   
-  cat <- 2
+  cat <- 3
   group_prob <- 2  # 1:3
   rsq_prod <- 0   # 0, 0.03, 0.07
-  N <- 400      # seq(100,400, by = 50), 500, 1000
+  N <- 1000      # seq(100,400, by = 50), 500, 1000
   loading <- .5   # .5 or .8
   n_items <- 6    # 6 or 12
   rep <- 1
   seed <- 75080
 }
 
+set.seed(seed)
+
 # set paths
 if(runoncluster == 1){setwd(dirname)} else if(runoncluster == 0){setwd(paste0(dirname))}
 
 
-
 # Select group probabilities based on category condition ----
 
-group_probs3 <- rbind(c(.34, .33, .33),
-                      c(.40, .40, .20),
-                      c(.60, .20, .20))
+group_probs3 <- rbind(c(.34, .33, .33), 
+                      c(.46, .27, .27),
+                      c(.74, .13, .13))
 group_probs2 <- rbind(c(.50,.50),
                       c(.60,.40),
                       c(.80,.20))
@@ -88,6 +88,8 @@ load(file = paste0(dirname,"/misc/parameter_values.rda"))
 name <- paste0("cat",cat,"_prob",group_prob,"_rsq",rsq_prod,"_items",
                n_items,"_loading",loading)
 
+stopifnot(!is.null(parameter_values[[name]]))
+
 # Moderation parameters
 mod_parameters <- parameter_values[[name]]$mod_parameters
 
@@ -105,8 +107,18 @@ sum_score_params <- parameter_values[[name]]$sum_score_parameters
 
 
 # Generate data ----
+round_preserve_sum <- function(x) {
+  y <- floor(x)
+  remainder <- round(sum(x)) - sum(y)
+  if (remainder > 0) {
+    idx <- order(x - y, decreasing = TRUE)[1:remainder]
+    y[idx] <- y[idx] + 1
+  }
+  y
+}
 
-ng <- round(N * probs)
+ng <- round_preserve_sum(N * probs)
+
 
 g1dat <- cbind(1,rmvnorm(ng[1], as.vector(moments_G1$mean), as.matrix(moments_G1$covariance)))
 g2dat <- cbind(2,rmvnorm(ng[2], as.vector(moments_G2$mean), as.matrix(moments_G2$covariance)))
@@ -123,46 +135,77 @@ if (bin == F){
 
 
 # Fit in Blimp and save results ----
-
-syntax <- list(
-  structural_model = c('Y ~ 1 G X G*X@int'),
-  X_measurement = c('X ~~ X@1',
-                   paste0('X -> X1@lx1 X2:X', n_items)),
-  Y_measurement = c(paste0('Y -> Y1:Y', n_items),
-                  'Y1 ~ 1@0'),
-  predictors = c('X ~ 1@0',
-                  'G ~ X')
-)
-
 no_cvg_blimp <- 0  # initialize
 
-blimp_model <- tryCatch({
-  rblimp(
-    data = dat,
-    latent = 'X Y',
-    nominal = 'G',
-    model = syntax,
-    parameters = 'lx1 ~ trunc(0,1)',
-    simple = 'X | G',
-    seed = seed,
-    burn = 20000,
-    iter = 20000,
-    waldtest = list('int = 0')
+if(bin){
+  syntax <- list(
+    structural_model = c('Y ~ 1 G X G*X@int'),
+    X_measurement = c('X ~~ X@1',
+                      paste0('X -> X1@lx1 X2:X', n_items)),
+    Y_measurement = c(paste0('Y -> Y1:Y', n_items),
+                      'Y1 ~ 1@0'),
+    predictors = c('X ~ 1@0',
+                   'G ~ X')
   )
-}, error = function(e) {
-  message("Blimp model failed to converge: ", e$message)
-  no_cvg_blimp <<- 1
-  return(NULL)
-})
+  
+  blimp_model <- tryCatch({
+    rblimp(
+      data = dat,
+      latent = 'X Y',
+      nominal = 'G',
+      model = syntax,
+      parameters = 'lx1 ~ trunc(0,1)',
+      seed = seed,
+      burn = 20000,
+      iter = 20000,
+      waldtest = 'int=0'
+    )
+  }, error = function(e) {
+    message("Blimp model produced error: ", e$message)
+    no_cvg_blimp <<- 1
+    return(NULL)
+  })
+  
+} else{
+  syntax <- list(
+    structural_model = c('Y ~ 1 G.2 G.3 X G.2*X@int1 G.3*X@int2'),
+    X_measurement = c('X ~~ X@1',
+                      paste0('X -> X1@lx1 X2:X', n_items)),
+    Y_measurement = c(paste0('Y -> Y1:Y', n_items),
+                      'Y1 ~ 1@0'),
+    predictors = c('X ~ 1@0',
+                   'G ~ X')
+  )
+  
+  blimp_model <- tryCatch({
+    rblimp(
+      data = dat,
+      latent = 'X Y',
+      nominal = 'G',
+      model = syntax,
+      parameters = 'lx1 ~ trunc(0,1)',
+      seed = seed,
+      burn = 20000,
+      iter = 20000,
+      waldtest = 'int1=0; int2=0'
+    )
+  }, error = function(e) {
+    message("Blimp model produced error: ", e$message)
+    no_cvg_blimp <<- 1
+    return(NULL)
+  })
+}
+
+
 # output(blimp_model)
 
 if(no_cvg_blimp == 0){
-  blimp.est <- as.numeric(c(blimp_model@estimates[2:numparams,1],blimp_model@estimates[1,1]))
-  blimp.se <- as.numeric(c(blimp_model@estimates[2:numparams,2],blimp_model@estimates[1,2]))
+  blimp.est <- as.numeric(c(blimp_model@estimates[2:numparams,"Estimate"],blimp_model@estimates["Y residual variance","Estimate"]))
+  blimp.se <- as.numeric(c(blimp_model@estimates[2:numparams,"StdDev"],blimp_model@estimates["Y residual variance","StdDev"]))
   
-  pvalues_blimp <- as.numeric(c(blimp_model@estimates[2:numparams,6], blimp_model@estimates[1,6]))
-  CIL_blimp <- as.numeric(c(blimp_model@estimates[2:numparams,3],blimp_model@estimates[1,3]))
-  CIU_blimp <- as.numeric(c(blimp_model@estimates[2:numparams,4],blimp_model@estimates[1,4]))
+  pvalues_blimp <- as.numeric(c(blimp_model@estimates[2:numparams,"PValue"], blimp_model@estimates["Y residual variance","PValue"]))
+  CIL_blimp <- as.numeric(c(blimp_model@estimates[2:numparams,"2.5%"],blimp_model@estimates["Y residual variance","2.5%"]))
+  CIU_blimp <- as.numeric(c(blimp_model@estimates[2:numparams,"97.5%"],blimp_model@estimates["Y residual variance","97.5%"]))
   
   if(!bin){
     blimp_joint_stat <- rep(blimp_model@waldtest[["statistic"]],numparams)
@@ -170,7 +213,7 @@ if(no_cvg_blimp == 0){
   } else {
     blimp_joint_p <- blimp_joint_stat <- rep(NA, numparams)
   }
-
+  
 } else {
   blimp.est <- blimp.se <- pvalues_blimp <- CIL_blimp <- CIU_blimp <- rep(NA, numparams)
   blimp_joint_p <- blimp_joint_stat <- rep(NA, numparams)
@@ -185,45 +228,68 @@ if(no_cvg_blimp == 0){
 
 no_cvg_lavaan <- 0
 
+# Population proportions used to define OVERALL (population-weighted) moments of X.
+# These match the proportions used in the data-generating model (see Parameter_Generation.R).
+if(bin == T){
+  p1 <- probs[1]; p2 <- probs[2]
+} else {
+  p1 <- probs[1]; p2 <- probs[2]; p3 <- probs[3]
+}
+
 if(n_items == 6){
   if(bin == T){
-    model <- '
-        # structural X
-        X ~ c(0,intX2)*1      # fix the first latent mean to 0 and free the other
-        X ~~ 1*X              # set within-group variance to 1 (equal across groups)
+    model <- sprintf('
+        # structural X (overall mean = 0 and overall variance = 1, NOT within-group)
+        X ~ c(meanX1, meanX2)*1               # free both group latent means
+        X ~~ c(varX1, varX2)*X                 # free both within-group latent variances
 
         # structural Y
         Y ~ c(intY1,intY2)*1 + c(slope1, slope2)*X  # group-specific intercepts map to dummy code effects
         Y ~~ c(resvarY,resvarY)*Y                   # pooled residual variance
 
         # measurement: loadings & intercepts equal across groups
-        X =~ NA*X1 + X2 + X3 + X4 + X5 + X6   # free first loading because var(Xw) = 1
-        X1 ~ 0*1                                     # fix first intercept to 0
-        Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6      # fix first loading because var(Y) is estimated
-        Y1 ~ 0*1                              # fix first intercept to 0
+        X =~ NA*X1 + X2 + X3 + X4 + X5 + X6    # free first loading; scale set by overallVarX == 1
+        X1 ~ 0*1                                # fix first intercept to 0
+        Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6
+        Y1 ~ 0*1                                # fix first intercept to 0
+
+        # overall (population-weighted) mean and variance of X
+        overallMeanX := %f*meanX1 + %f*meanX2
+        overallVarX  := %f*varX1 + %f*varX2 + %f*meanX1^2 + %f*meanX2^2
+
+        overallMeanX == 0                       # overall E[X] = 0
+        overallVarX  == 1                       # overall Var(X) = 1
 
         # conversions to MR parameters
         B0 := intY1
         G_slope := intY2 - intY1
         X_slope := slope1
         GbyX_slope := slope2 - slope1
-        Y_resvar := resvarY'
-
+        Y_resvar := resvarY',
+                     p1, p2, p1, p2, p1, p2)
+    
   } else {
-    model <- '
-        # structural X
-        X ~ c(0,intX2,intX3)*1      # fix the first latent meam to 0 and free the others
-        X ~~ 1*X                    # set within-group variance to 1
+    model <- sprintf('
+        # structural X (overall mean = 0 and overall variance = 1, NOT within-group)
+        X ~ c(meanX1, meanX2, meanX3)*1        # free all group latent means
+        X ~~ c(varX1, varX2, varX3)*X           # free all within-group latent variances
 
         # structural Y
-        Y ~ c(intY1,intY2,intY3)*1 + c(slope1, slope2, slope3)*X    # group-specific intercepts map to the dummy code effects
+        Y ~ c(intY1,intY2,intY3)*1 + c(slope1, slope2, slope3)*X    # group-specific intercepts map to dummy code effects
         Y ~~ c(resvarY,resvarY,resvarY)*Y                           # pooled residual variance
 
         # measurement models: all intercepts and residual variances estimated with equality constraints across groups
-        X =~ NA*X1 + X2 + X3 + X4 + X5 + X6          # free first loading because var(Xw) = 1
-        X1 ~ 0*1                                     # fix first intercept to 0
-        Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6             # fix first loading because var(Y) is estimated
-        Y1 ~ 0*1                                     # fix first intercept to 0
+        X =~ NA*X1 + X2 + X3 + X4 + X5 + X6     # free first loading; scale set by overallVarX == 1
+        X1 ~ 0*1                                 # fix first intercept to 0
+        Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6
+        Y1 ~ 0*1                                 # fix first intercept to 0
+
+        # overall (population-weighted) mean and variance of X
+        overallMeanX := %f*meanX1 + %f*meanX2 + %f*meanX3
+        overallVarX  := %f*varX1 + %f*varX2 + %f*varX3 + %f*meanX1^2 + %f*meanX2^2 + %f*meanX3^2
+
+        overallMeanX == 0                        # overall E[X] = 0
+        overallVarX  == 1                        # overall Var(X) = 1
 
         B0 := intY1
         G2_slope := intY2 - intY1
@@ -231,15 +297,16 @@ if(n_items == 6){
         X_slope := slope1
         G2byX_slope := slope2 - slope1
         G3byX_slope := slope3 - slope1
-        Y_resvar := resvarY'
+        Y_resvar := resvarY',
+                     p1, p2, p3, p1, p2, p3, p1, p2, p3)
   }
-
+  
 } else if(n_items == 12){
   if(bin == T){
-    model <- '
-        # structural X
-        X ~ c(0,intX2)*1
-        X ~~ 1*X
+    model <- sprintf('
+        # structural X (overall mean = 0 and overall variance = 1, NOT within-group)
+        X ~ c(meanX1, meanX2)*1
+        X ~~ c(varX1, varX2)*X
 
         # structural Y
         Y ~ c(intY1,intY2)*1 + c(slope1, slope2)*X
@@ -251,17 +318,25 @@ if(n_items == 6){
         Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6 + Y7 + Y8 + Y9 + Y10 + Y11 + Y12
         Y1 ~ 0*1
 
+        # overall (population-weighted) mean and variance of X
+        overallMeanX := %f*meanX1 + %f*meanX2
+        overallVarX  := %f*varX1 + %f*varX2 + %f*meanX1^2 + %f*meanX2^2
+
+        overallMeanX == 0
+        overallVarX  == 1
+
         # conversions to MR parameters
         B0 := intY1
         G_slope := intY2 - intY1
         X_slope := slope1
         GbyX_slope := slope2 - slope1
-        Y_resvar := resvarY'
+        Y_resvar := resvarY',
+                     p1, p2, p1, p2, p1, p2)
   } else {
-    model <- '
-        # structural X
-        X ~ c(0,intX2,intX3)*1
-        X ~~ 1*X
+    model <- sprintf('
+        # structural X (overall mean = 0 and overall variance = 1, NOT within-group)
+        X ~ c(meanX1, meanX2, meanX3)*1
+        X ~~ c(varX1, varX2, varX3)*X
 
         # structural Y
         Y ~ c(intY1,intY2,intY3)*1 + c(slope1, slope2, slope3)*X
@@ -273,13 +348,21 @@ if(n_items == 6){
         Y =~ Y1 + Y2 + Y3 + Y4 + Y5 + Y6 + Y7 + Y8 + Y9 + Y10 + Y11 + Y12
         Y1 ~ 0*1
 
+        # overall (population-weighted) mean and variance of X
+        overallMeanX := %f*meanX1 + %f*meanX2 + %f*meanX3
+        overallVarX  := %f*varX1 + %f*varX2 + %f*varX3 + %f*meanX1^2 + %f*meanX2^2 + %f*meanX3^2
+
+        overallMeanX == 0
+        overallVarX  == 1
+
         B0 := intY1
         G2_slope := intY2 - intY1
         G3_slope := intY3 - intY1
         X_slope := slope1
         G2byX_slope := slope2 - slope1
         G3byX_slope := slope3 - slope1
-        Y_resvar := resvarY'
+        Y_resvar := resvarY',
+                     p1, p2, p3, p1, p2, p3, p1, p2, p3)
   }
 }
 
@@ -303,15 +386,26 @@ if(no_cvg_lavaan == 1){
 } else {
   mg_model <-  summary(fit, standardized = T)
   mg_est <- parameterEstimates(fit, ci = TRUE, level = 0.95)
-  mg.est <- as.numeric(mg_model[["pe"]][["est"]][(((length(mg_model[["pe"]][["est"]])+1)-(numparams))):length(mg_model[["pe"]][["est"]])])
-  mg.se <- as.numeric(mg_model[["pe"]][["se"]][(((length(mg_model[["pe"]][["se"]])+1)-(numparams))):length(mg_model[["pe"]][["se"]])])
   
-  pvalues_mg <- as.numeric(mg_model[["pe"]][["pvalue"]][(((length(mg_model[["pe"]][["pvalue"]])+1)-(numparams))):length(mg_model[["pe"]][["pvalue"]])])
-  CIL_mg <- as.numeric(mg_est[(1 + nrow(mg_est) - (numparams)):nrow(mg_est),11])
-  CIU_mg <- as.numeric(mg_est[(1 + nrow(mg_est) - (numparams)):nrow(mg_est),12])
+  # Extract MR-conversion parameters by NAME (robust to the added overallMeanX/overallVarX
+  # ':=' definitions and '==' constraints, which would otherwise shift positional indices).
+  if(bin){
+    mr_param_names <- c("B0", "G_slope", "X_slope", "GbyX_slope", "Y_resvar")
+  } else {
+    mr_param_names <- c("B0", "G2_slope", "G3_slope", "X_slope",
+                        "G2byX_slope", "G3byX_slope", "Y_resvar")
+  }
+  mr_rows <- mg_est[mg_est$op == ":=" & mg_est$lhs %in% mr_param_names, , drop = FALSE]
+  mr_rows <- mr_rows[match(mr_param_names, mr_rows$lhs), , drop = FALSE]
+  
+  mg.est     <- as.numeric(mr_rows$est)
+  mg.se      <- as.numeric(mr_rows$se)
+  pvalues_mg <- as.numeric(mr_rows$pvalue)
+  CIL_mg     <- as.numeric(mr_rows$ci.lower)
+  CIU_mg     <- as.numeric(mr_rows$ci.upper)
   
   if(!bin){
-    lavJoint <- lavTestWald(fit, constraints = "G2byX_slope == G3byX_slope == 0")
+    lavJoint <- lavTestWald(fit, constraints = "G2byX_slope == 0; G3byX_slope == 0")
     lav_joint_stat <- rep(lavJoint[["stat"]],(numparams))
     lav_joint_p <- rep(lavJoint[["p.value"]],numparams)
   } else {
@@ -325,34 +419,44 @@ if(no_cvg_lavaan == 1){
 
 # Fit version with sum score ----
 
-# Calculate SD of sum scores
+# Calculate pooled covariance matrix
 Sigma1 <- moments_G1$covariance
 Sigma2 <- moments_G2$covariance
-if(!bin){
+
+if (!bin) {
   Sigma3 <- moments_G3$covariance
-  Sigma_pooled <- ((ng[1] - 1) * Sigma1 + (ng[2] - 1) * Sigma2 + (ng[3] - 1) * Sigma3) / 
+  Sigma_pooled <- ((ng[1] - 1) * Sigma1 +
+                     (ng[2] - 1) * Sigma2 +
+                     (ng[3] - 1) * Sigma3) /
     (ng[1] + ng[2] + ng[3] - 3)
-} else{
-  Sigma_pooled <- ((ng[1] - 1) * Sigma1 + (ng[2] - 1) * Sigma2) / (ng[1] + ng[2] - 2)
+} else {
+  Sigma_pooled <- ((ng[1] - 1) * Sigma1 +
+                     (ng[2] - 1) * Sigma2) /
+    (ng[1] + ng[2] - 2)
 }
 
-# Compute pooled covariance matrix
-
+# Define contrast vectors for sum scores
 ones_X <- c(rep(1, n_items), rep(0, n_items))  
 ones_Y <- c(rep(0, n_items), rep(1, n_items)) 
 
+# Compute variances of sum scores (measurement model only)
 var_X <- t(ones_X) %*% Sigma_pooled %*% ones_X
 var_Y <- t(ones_Y) %*% Sigma_pooled %*% ones_Y
 
 sd_X <- as.numeric(sqrt(var_X))
 sd_Y <- as.numeric(sqrt(var_Y))
 
+# Compute raw sum scores
+X_sum_raw <- dat %>% select(starts_with("X")) %>% rowSums()
+Y_sum_raw <- dat %>% select(starts_with("Y")) %>% rowSums()
 
-# add sum scores to data set after scaling them
-X_sum <- (dat %>% select(starts_with("X")) %>% rowSums())
-Y_sum <- (dat %>% select(starts_with("Y")) %>% rowSums())
-X_sum <- X_sum/sd_X
-Y_sum <- Y_sum*((mod_parameters[["residual_variance"]]/(1-rsq_prod))/(sd_Y))
+# Standardize the sum scores so they are on the same scale as the latent factors
+# (overall mean 0, variance 1).  This puts the lm() coefficients on the latent
+# moderation-parameter scale so they're directly comparable to mod_parameters
+# (Blimp / lavaan).  Sample-based mean and SD are used so the scaling reflects
+# the realized data.
+X_sum <- as.numeric(scale(X_sum_raw))   # (x - mean(x)) / sd(x)
+Y_sum <- as.numeric(scale(Y_sum_raw))
 
 dat <- cbind(dat, X_sum, Y_sum)
 
@@ -373,16 +477,16 @@ if(no_cvg_sum == 1){
   sum.est <- sum.se <- pvalues_sum <- CIL_sum <- CIU_sum <- rep(NA, numparams)
   sumJoint_stat <- sumJoint_p <- rep(NA, numparams)
 } else {
-  sum_model <- summary(lm(Y_sum ~ factor(G) + X_sum + factor(G)*X_sum, data = dat))
+  sum_model <- summary(sum_score_model)
   sum.est <- as.numeric(c(sum_model[["coefficients"]][,1], sum_model[["sigma"]]^2))
-  sum.se <- as.numeric(sum_model[["coefficients"]][,2])
+  sum.se <- as.numeric(c(sum_model[["coefficients"]][,2],NA))
   
   pvalues_sum <- as.numeric(c(sum_model[["coefficients"]][,4], NA))
   CIL_sum <- as.numeric(c(confint(sum_score_model, level = 0.95)[,1],NA))
   CIU_sum <- as.numeric(c(confint(sum_score_model, level = 0.95)[,2],NA))
   
   if (!bin){
-    sumJoint <- linearHypothesis(sum_score_model, c("factor(G)2:X_sum = 0", "factor(G)3:X_sum  = 0"))
+    sumJoint <- linearHypothesis(sum_score_model, c("factor(G)2:X_sum = 0", "factor(G)3:X_sum = 0"))
     sumJoint_stat <- rep(sumJoint$F[2],numparams)
     sumJoint_p <- rep(sumJoint$`Pr(>F)`[2],numparams)
   } else {
@@ -402,7 +506,7 @@ if (bin == F){
   param.id <- c("beta_0","beta_G2","beta_G3","beta_X","beta_XG2","beta_XG3","res.var")
 } else {
   results <- as.data.frame(matrix(999, nrow = 15, ncol = 27))
-  param.id <- c("beta_0","beta_G2","beta_X","beta_XG2","res.var")
+  param.id <- c("beta_0","beta_G","beta_X","beta_XG","res.var")
 }
 colnames(results) <- c("categories", "group_prob", "rsq_prod", "N", "loading",
                        "n_items", "model_type", "param.id", "est", "se","true",
@@ -425,9 +529,9 @@ results[,8] <- rep(param.id,3)
 
 # Save estimates, sd, true parameters, and then calculate bias
 results[,9] <- c(blimp.est, mg.est, sum.est)
-results[,10] <- c(blimp.se, mg.se, sum.se, NA)
+results[,10] <- c(blimp.se, mg.se, sum.se)
 
-results[,11] <- c(rep(as.numeric(mod_parameters),3)) # true values
+results[,11] <- rep(as.numeric(mod_parameters), 3) # true values (latent scale; sum scores now standardized so same comparator applies)
 
 results[,12] <- results[,9] - results[,11]  # bias
 results[,13] <- results[,12]/results[,11]   # relative bias
@@ -472,8 +576,8 @@ results[,21] <- c(rep(no_cvg_blimp,numparams), rep(no_cvg_lavaan,numparams), rep
 
 # save PSR and n-effective
 if(no_cvg_blimp == 0){
-  results[,22] <- max(blimp_model@psr[20,], na.rm = T)
-  results[,23] <- min(blimp_model@estimates[,7], na.rm = T)
+  results[,22] <- max(tail(blimp_model@psr,1), na.rm = T)
+  results[,23] <- min(blimp_model@estimates[, 'N_Eff'] , na.rm = T)
 } else {
   results[,22] <- NA
   results[,23] <- NA
@@ -485,5 +589,7 @@ results[,27] <- seed
 # Test for shell script
 # results <- c(cat, group_prob, rsq_prod, N, loading, n_items, rep, seed)
 
-write.table(results, paste0('/u/scratch/r/remusmit/',filename,'.dat'), row.names = F,
-            col.names = F)
+if(runoncluster != 0 ){
+  write.table(results, paste0('/u/scratch/r/remusmit/',filename,'.dat'), row.names = F,
+              col.names = F)
+}
