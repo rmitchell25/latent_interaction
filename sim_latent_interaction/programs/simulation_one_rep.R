@@ -101,8 +101,9 @@ moments_G1 <- parameter_values[[name]]$G1
 moments_G2 <- parameter_values[[name]]$G2
 if(bin == F){moments_G3 <- parameter_values[[name]]$G3}
 
-# sum score parameters
-sum_score_params <- parameter_values[[name]]$sum_score_parameters
+# sum score parameters (no longer used: sum scores are standardized and compared
+# directly to mod_parameters; raw-scale sum_score_params are not needed)
+# sum_score_params <- parameter_values[[name]]$sum_score_parameters
 
 
 
@@ -132,6 +133,21 @@ if (bin == F){
   names(dat) <- c('G',paste0('X',1:n_items),paste0('Y',1:n_items))
 }
 
+
+
+# Write data for Mplus (two-group only) ----
+if(bin){
+  tmpdir <- Sys.getenv("TMPDIR")
+  if(nchar(tmpdir) == 0) tmpdir <- file.path(dirname, "temp")
+  dir.create(tmpdir, showWarnings = FALSE, recursive = TRUE)
+  mpath   <- if(runoncluster == 0) "/applications/mplus/mplus" else "mplus"
+  progdir <- file.path(dirname, "programs")
+
+  dat_mplus      <- dat[, c("G", paste0("X", 1:n_items), paste0("Y", 1:n_items))]
+  dat_mplus$G1   <- ifelse(dat$G == 2, 1, 0)   # binary 0/1 dummy used as CATEGORICAL IS G
+  write.table(dat_mplus, file.path(tmpdir, "mplus_data.txt"),
+              row.names = FALSE, col.names = FALSE)
+}
 
 
 # Fit in Blimp and save results ----
@@ -498,6 +514,73 @@ if(no_cvg_sum == 1){
 
 
 
+# Run Mplus and read estimates (two-group only) ----
+no_cvg_mplus <- 0
+mplus.est      <- rep(NA, numparams)
+mplus.se       <- rep(NA, numparams)
+pvalues_mplus  <- rep(NA, numparams)
+CIL_mplus      <- rep(NA, numparams)
+CIU_mplus      <- rep(NA, numparams)
+
+if(bin){
+  # Generate .inp file via shell script ($1 = TMPDIR, $2 = n_items)
+  system(paste0("sh ", shQuote(file.path(progdir, "lms_mplus.sh")),
+                " ", shQuote(tmpdir),
+                " ", n_items,
+                " > ", shQuote(file.path(tmpdir, "lms.inp"))))
+
+  # Run Mplus; system() blocks until completion; non-zero exit = failure
+  mplus_exit <- system(paste(mpath,
+                             shQuote(file.path(tmpdir, "lms.inp")),
+                             shQuote(file.path(tmpdir, "lms.out"))))
+
+  est_file <- file.path(tmpdir, "estimates.dat")
+
+  if(mplus_exit == 0 && file.exists(est_file)){
+    mplus_raw     <- scan(est_file, quiet = TRUE)
+    n_mp          <- 6L * as.integer(n_items)   # offset to structural block
+    n_total_params <- n_mp + 5L                 # total free parameters (= 6n+5)
+
+    if(length(mplus_raw) >= 2L * n_total_params){
+      # ── Estimates ──────────────────────────────────────────────────────────
+      # param.id order: beta_0, beta_G, beta_X, beta_XG, res.var
+      # TECH1 positions (1-based):
+      #   ALPHA[Y]   = 6n-1  → beta_0
+      #   BETA[Y,G]  = 6n+2  → beta_G
+      #   BETA[Y,X]  = 6n    → beta_X
+      #   BETA[Y,XG] = 6n+1  → beta_XG
+      #   PSI[Y]     = 6n+4  → res.var
+      mplus.est <- c(mplus_raw[n_mp - 1L],
+                     mplus_raw[n_mp + 2L],
+                     mplus_raw[n_mp + 0L],
+                     mplus_raw[n_mp + 1L],
+                     mplus_raw[n_mp + 4L])
+
+      # ── Standard errors (second block) ─────────────────────────────────────
+      mplus.se <- c(mplus_raw[n_total_params + n_mp - 1L],
+                    mplus_raw[n_total_params + n_mp + 2L],
+                    mplus_raw[n_total_params + n_mp + 0L],
+                    mplus_raw[n_total_params + n_mp + 1L],
+                    mplus_raw[n_total_params + n_mp + 4L])
+
+      # ── p-values (two-tailed Z-test) ───────────────────────────────────────
+      pvalues_mplus    <- 2 * (1 - pnorm(abs(mplus.est / mplus.se)))
+      pvalues_mplus[5] <- NA   # no p-value for residual variance
+
+      # ── Wald 95% CIs ───────────────────────────────────────────────────────
+      CIL_mplus    <- mplus.est - 1.96 * mplus.se
+      CIU_mplus    <- mplus.est + 1.96 * mplus.se
+      CIL_mplus[5] <- CIU_mplus[5] <- NA   # no CI for residual variance
+
+    } else {
+      no_cvg_mplus <- 1
+    }
+  } else {
+    no_cvg_mplus <- 1
+  }
+}
+
+
 # Results: Power, Type 2 Error, Relative Bias, MSE, CI Coverage ----
 
 # Set up data frame differently based on number of categories
@@ -505,7 +588,7 @@ if (bin == F){
   results <- as.data.frame(matrix(999, nrow = 21, ncol = 27))
   param.id <- c("beta_0","beta_G2","beta_G3","beta_X","beta_XG2","beta_XG3","res.var")
 } else {
-  results <- as.data.frame(matrix(999, nrow = 15, ncol = 27))
+  results <- as.data.frame(matrix(999, nrow = 20, ncol = 27))  # 5 params x 4 methods
   param.id <- c("beta_0","beta_G","beta_X","beta_XG","res.var")
 }
 colnames(results) <- c("categories", "group_prob", "rsq_prod", "N", "loading",
@@ -521,17 +604,18 @@ results[,3] <- rsq_prod
 results[,4] <- N
 results[,5] <- loading
 results[,6] <- n_items
-results[,7] <- c(rep(1,(nrow(results)/3)),rep(2,(nrow(results)/3)),rep(3,(nrow(results)/3)))
-results[,8] <- rep(param.id,3)
+n_methods <- if(bin) 4L else 3L
+results[,7] <- rep(1:n_methods, each = numparams)
+results[,8] <- rep(param.id, n_methods)
 
 
 
 
 # Save estimates, sd, true parameters, and then calculate bias
-results[,9] <- c(blimp.est, mg.est, sum.est)
-results[,10] <- c(blimp.se, mg.se, sum.se)
+results[,9]  <- if(bin) c(blimp.est, mg.est, sum.est, mplus.est) else c(blimp.est, mg.est, sum.est)
+results[,10] <- if(bin) c(blimp.se,  mg.se,  sum.se,  mplus.se)  else c(blimp.se,  mg.se,  sum.se)
 
-results[,11] <- rep(as.numeric(mod_parameters), 3) # true values (latent scale; sum scores now standardized so same comparator applies)
+results[,11] <- rep(as.numeric(mod_parameters), n_methods) # true values
 
 results[,12] <- results[,9] - results[,11]  # bias
 results[,13] <- results[,12]/results[,11]   # relative bias
@@ -539,7 +623,7 @@ results[,14] <- results[,12]^2    # squared bias
 
 
 # P-values and Significance
-pvals <- c(pvalues_blimp, pvalues_mg, pvalues_sum)
+pvals <- if(bin) c(pvalues_blimp, pvalues_mg, pvalues_sum, pvalues_mplus) else c(pvalues_blimp, pvalues_mg, pvalues_sum)
 sig_mod<- rep(0,nrow(results))
 sig_mod[pvals < .05]<-1
 
@@ -548,8 +632,8 @@ results[,16] <- sig_mod
 
 
 # CI Coverage - True value within CI
-CI_lower <- results[,24] <- c(CIL_blimp ,CIL_mg, CIL_sum)
-CI_upper <- results[,25] <- c(CIU_blimp, CIU_mg, CIU_sum)
+CI_lower <- results[,24] <- if(bin) c(CIL_blimp, CIL_mg, CIL_sum, CIL_mplus) else c(CIL_blimp, CIL_mg, CIL_sum)
+CI_upper <- results[,25] <- if(bin) c(CIU_blimp, CIU_mg, CIU_sum, CIU_mplus) else c(CIU_blimp, CIU_mg, CIU_sum)
 
 CI_cov <- rep(0,nrow(results))
 CI_cov[CI_lower < as.numeric(results[,11]) & CI_upper > as.numeric(results[,11])] <-1
@@ -572,15 +656,25 @@ if(!bin){
 }
 
 # Save convergence check
-results[,21] <- c(rep(no_cvg_blimp,numparams), rep(no_cvg_lavaan,numparams), rep(no_cvg_sum,numparams))
+if(bin){
+  results[,21] <- c(rep(no_cvg_blimp,numparams), rep(no_cvg_lavaan,numparams),
+                    rep(no_cvg_sum,numparams),   rep(no_cvg_mplus,numparams))
+} else {
+  results[,21] <- c(rep(no_cvg_blimp,numparams), rep(no_cvg_lavaan,numparams), rep(no_cvg_sum,numparams))
+}
 
-# save PSR and n-effective
+# save PSR and n-effective (Blimp diagnostics; NA for other methods)
 if(no_cvg_blimp == 0){
   results[,22] <- max(tail(blimp_model@psr,1), na.rm = T)
   results[,23] <- min(blimp_model@estimates[, 'N_Eff'] , na.rm = T)
 } else {
   results[,22] <- NA
   results[,23] <- NA
+}
+# Mplus rows carry NA for PSR/Neff (not applicable)
+if(bin){
+  results[(3*numparams + 1):(4*numparams), 22] <- NA
+  results[(3*numparams + 1):(4*numparams), 23] <- NA
 }
 
 results[,26] <- rep

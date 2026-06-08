@@ -64,6 +64,7 @@ else
  	module load gcc/10.2.0
     module load nlopt
     module load blimp
+    module load mplus
     module load R/4.4.0
 
 fi
